@@ -484,14 +484,14 @@ class Lanemarking(Entity):
 
         if self.predicted:
             m.color.a = 0.5
-            m.color.r = int(255 * self.confidence)
+            m.color.r = self.confidence
             m.color.g = 0
             m.color.b = 0
         else:
             m.color.a = 0.5
             m.color.r = 0
             m.color.g = 0
-            m.color.b = int(255 * self.confidence)
+            m.color.b = self.confidence
 
         m.scale.z = 0.1
         m.pose.position.z = m.scale.z / 2.0

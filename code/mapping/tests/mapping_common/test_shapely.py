@@ -74,6 +74,8 @@ def get_test_entities() -> List[entity.Entity]:
 
     lane = entity.Lanemarking(
         style=entity.Lanemarking.Style.SOLID,
+        position_index=1,
+        predicted=False,
         confidence=1.0,
         priority=1.0,
         shape=shape.Rectangle(4.0, 0.2),
