@@ -449,11 +449,19 @@ class lane_position(CompatibleNode):
         """
         labels = []
         try:
-            clustering = DBSCAN(
-                eps=self.epsilon, min_samples=self.min_samples, algorithm="ball_tree"
-            ).fit(
-                points
-            )  # HDBSCAN
+            if 1:
+                y_coords = np.array(points)[:, 1].reshape(-1, 1)
+                clustering = DBSCAN(eps=self.epsilon, min_samples=self.min_samples).fit(
+                    y_coords
+                )
+            else:
+                clustering = DBSCAN(
+                    eps=self.epsilon,
+                    min_samples=self.min_samples,
+                    algorithm="ball_tree",
+                ).fit(
+                    points
+                )  # HDBSCAN
             labels = clustering.labels_
         except Exception as e:
             rospy.logwarn(

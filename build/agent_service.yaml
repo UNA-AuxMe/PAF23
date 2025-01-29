@@ -29,10 +29,10 @@ services:
       - CARLA_SIM_HOST=carla-simulator
       - ROS_HOSTNAME=agent
       - XDG_RUNTIME_DIR=/tmp/runtime-carla
-      - ROUTE=/opt/leaderboard/data/routes_devtest.xml
+      #- ROUTE=/opt/leaderboard/data/routes_devtest.xml
       - DEBUG_WRAPPER_DEFAULT_HOST=0.0.0.0
       # Simple route without special scenarios
-      #- ROUTE=/workspace/code/routes/routes_simple.xml
+      - ROUTE=/workspace/code/routes/routes_simple.xml
       # load for specific szenario:
       #- ROUTE=/workspace/code/routes/routes_car_in_lane.xml
       #- ROUTE=/workspace/code/routes/routes_construction_sign.xml
