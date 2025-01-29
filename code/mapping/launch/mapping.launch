@@ -49,4 +49,7 @@
     <param name="min_merging_overlap_area" value="$(arg min_merging_overlap_area)" />
   </node>
 
+  <node pkg="mapping" type="path_test.py" name="Local_Trajectory_Node" output="screen" />
+    <param name="map_publish_rate" value="$(arg map_publish_rate)" />
+
 </launch>

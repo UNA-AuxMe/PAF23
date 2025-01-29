@@ -56,6 +56,7 @@ class MappingDataIntegrationNode(CompatibleNode):
             callback=self.lanemarkings_callback,
             qos_profile=1,
         )
+        self.lidar_data = None
         self.new_subscription(
             topic=self.get_param("~hero_speed_topic", "/carla/hero/Speed"),
             msg_type=CarlaSpeedometer,
@@ -359,6 +360,7 @@ class MappingDataIntegrationNode(CompatibleNode):
         for filter in self.get_current_map_filters():
             map = filter.filter(map)
         msg = map.to_ros_msg()
+
         self.map_publisher.publish(msg)
 
     def get_current_map_filters(self) -> List[MapFilter]:

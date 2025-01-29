@@ -3,6 +3,7 @@ from typing import List, Optional, Callable, Literal, Tuple
 
 import shapely
 from shapely import STRtree
+import shapely.plotting
 import numpy as np
 import numpy.typing as npt
 
@@ -15,6 +16,7 @@ from mapping_common.shape import Rectangle
 from shapely.geometry import Polygon, LineString
 
 from mapping import msg
+from nav_msgs.msg import Path
 
 
 @dataclass
@@ -284,6 +286,40 @@ class Map:
 
         return collision_entities
 
+    def entities_in_area(self, radius, only_in_front=True) -> List[Entity]:
+        """Returns the entities without the hero car
+            in a given radius around the hero car.
+            Flag only_in_front decides if entities
+            behind the car, are returend too.
+        Only checks if the first entity is_hero
+
+        Returns:
+            List[Entity]: Entities in front and/or back of hero
+            without the hero car in given radius
+        """
+        entities = self.entities_without_hero()
+        entities_in_area = []
+
+        if only_in_front:
+            for entry in entities:
+                distance = np.sqrt(
+                    np.power(entry.transform.translation().x(), 2)
+                    + np.power(entry.transform.translation().y(), 2)
+                )
+                if entry.transform.translation().x() > 0 and distance < radius:
+                    entities_in_area.append(entry)
+            return entities_in_area
+        else:
+            for entry in entities:
+                distance = np.sqrt(
+                    np.power(entry.transform.translation().x(), 2)
+                    + np.power(entry.transform.translation().y(), 2)
+                )
+                if distance < radius:
+                    entities_in_area.append(entry)
+
+        return entities_in_area
+
     def build_tree(
         self,
         f: Optional[FlagFilter] = None,
@@ -336,6 +372,89 @@ class Map:
         entities = list(map(lambda e: e.to_ros_msg(), self.entities))
         header = Header(stamp=self.timestamp)
         return msg.Map(header=header, entities=entities)
+
+    def lane_marking_left(self) -> Optional[Entity]:
+        """
+                Returns:
+        +           Optional[Entity]: The left lane marking entity or None if not found
+        """
+        for entry in self.entities:
+            if entry.flags._is_lanemark is True and entry.position_index == 1:
+                return entry
+        return None
+
+    def lane_marking_right(self) -> Optional[Entity]:
+        """
+                Returns:
+        +           Optional[Entity]: The right lane marking entity or None if not found
+        """
+        for entry in self.entities:
+            if entry.flags._is_lanemark is True and entry.position_index == -1:
+                return entry
+        return None
+
+    # Class-level constants
+    VEHICLE_WIDTH_BUFFER = 1.0  # meters
+    LANE_CHECK_BUFFER = 0.5  # meters
+    OBSTACLE_DETECTION_RADIUS = 10.0  # meters
+
+    def check_trajectory(self, local_path: Path) -> int:
+        """
+        Checks the calculated local path on multiple conditions
+
+        Args:
+            local_path (Path): The path to check
+
+        Returns:
+            int: Status code indicating the path's validity:
+                -1: local_path is None or empty
+                 0: Path has no obstacles/infringements
+                 1: Path planned through gap too small for car
+                 2: Path cuts left lane marking
+                 3: Path cuts right lane marking
+
+        Raises:
+            ValueError: If local_path.poses is empty
+        """
+        if local_path.poses is None or not local_path.poses:
+            return -1
+
+        # transform local path to shapely object
+        trajectory_shapely_points = []
+        for pos in local_path.poses:
+            trajectory_shapely_points.append(
+                shapely.Point(pos.pose.position.x, pos.pose.position.y)
+            )
+        local_trajectory = shapely.LineString(trajectory_shapely_points)
+        # widen the Linestring to an area representing the cars width
+        local_trajectory_buffer = local_trajectory.buffer(self.VEHICLE_WIDTH_BUFFER, 3)
+
+        # Check path collision with other entities
+        obstacles = self.entities_in_area(self.OBSTACLE_DETECTION_RADIUS)
+        for entry in obstacles:
+            if not entry.flags._is_lanemark and shapely.intersection(
+                entry.to_shapely().poly, local_trajectory_buffer
+            ):
+                return 1
+
+        # decrease buffer size for lane checking
+        local_trajectory_buffer = local_trajectory.buffer(self.LANE_CHECK_BUFFER, 3)
+
+        # Check left lane
+        left_lane = self.lane_marking_left()
+        if left_lane is not None and shapely.intersection(
+            left_lane.to_shapely().poly, local_trajectory_buffer
+        ):
+            return 2
+
+        # Check right lane
+        right_lane = self.lane_marking_right()
+        if right_lane is not None and shapely.intersection(
+            right_lane.to_shapely().poly, local_trajectory_buffer
+        ):
+            return 3
+
+        return 0
 
 
 @dataclass(init=False)
