@@ -19,7 +19,6 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 import cv2
 from scipy.spatial import KDTree
-import time
 
 
 class lane_position(CompatibleNode):
@@ -27,7 +26,6 @@ class lane_position(CompatibleNode):
         super().__init__(name, **kwargs)
         self.bridge = CvBridge()
         self.dist_arrays = []
-        self.last_lanemarkings = []
 
         # get parameters from launch file
         self.line_length = self.get_param(
@@ -128,9 +126,8 @@ class lane_position(CompatibleNode):
         lanemarkings = self.lanemarking_from_coordinates(
             positions, angles, confidences, stamp, predicted=False
         )
-
-        lanemarkings.extend(self.lanemarkings_from_buffer(lanemarkings))
         self.last_lanemarkings = lanemarkings
+        lanemarkings.extend(self.lanemarkings_from_buffer(lanemarkings))
         self.publish_Lanemarkings_map(lanemarkings)
 
     def remove_horizontal_lines(self, lanemask):
@@ -455,19 +452,13 @@ class lane_position(CompatibleNode):
         """
         labels = []
         try:
-            if 1:
-                y_coords = np.array(points)[:, 1].reshape(-1, 1)
-                clustering = DBSCAN(eps=self.epsilon, min_samples=self.min_samples).fit(
-                    y_coords
-                )
-            else:
-                clustering = DBSCAN(
-                    eps=self.epsilon,
-                    min_samples=self.min_samples,
-                    algorithm="ball_tree",
-                ).fit(
-                    points
-                )  # HDBSCAN
+            clustering = DBSCAN(
+                eps=self.epsilon,
+                min_samples=self.min_samples,
+                algorithm="ball_tree",
+            ).fit(
+                points
+            )  # HDBSCAN
             labels = clustering.labels_
         except Exception as e:
             rospy.logwarn(
@@ -494,7 +485,6 @@ class lane_position(CompatibleNode):
         return clusters
 
     def lanemarkings_from_buffer(self, lanemarkings):
-        s = time.time()
         new_lanemarkings = []
         if not self.last_lanemarkings:
             return new_lanemarkings
@@ -515,10 +505,8 @@ class lane_position(CompatibleNode):
         tree = KDTree(new_y_positions)
         for index, position in enumerate(buffered_y_positions):
             distance, _ = tree.query(position)
-            if distance > self.buffer_threshold:
+            if distance < self.buffer_threshold:
                 new_lanemarkings.append(buffered_lanemarkings[index])
-        e = time.time()
-        duration = e - s
         return new_lanemarkings
 
     # currently not used. Needs improvements in future
