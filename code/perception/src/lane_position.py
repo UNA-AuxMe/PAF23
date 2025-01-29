@@ -18,6 +18,8 @@ from mapping.msg import Map as MapMsg
 import numpy as np
 from sklearn.cluster import DBSCAN
 import cv2
+from scipy.spatial import KDTree
+import time
 
 
 class lane_position(CompatibleNode):
@@ -25,6 +27,7 @@ class lane_position(CompatibleNode):
         super().__init__(name, **kwargs)
         self.bridge = CvBridge()
         self.dist_arrays = []
+        self.last_lanemarkings = []
 
         # get parameters from launch file
         self.line_length = self.get_param(
@@ -54,7 +57,7 @@ class lane_position(CompatibleNode):
         )  # max acceptable standard deviation in linearregression for normalization
         self.angle_prediction_threshold = self.get_param("angle_prediction_threshold")
         self.confidence_threshold = self.get_param("confidence_threshold")
-
+        self.buffer_threshold = 1.5
         self.y_tolerance = self.get_param(
             "y_tolerance"
         )  # min distance that lanemarkings have to have, new lanemarkings within this
@@ -125,6 +128,9 @@ class lane_position(CompatibleNode):
         lanemarkings = self.lanemarking_from_coordinates(
             positions, angles, confidences, stamp, predicted=False
         )
+
+        lanemarkings.extend(self.lanemarkings_from_buffer(lanemarkings))
+        self.last_lanemarkings = lanemarkings
         self.publish_Lanemarkings_map(lanemarkings)
 
     def remove_horizontal_lines(self, lanemask):
@@ -486,6 +492,34 @@ class lane_position(CompatibleNode):
                 clusters["outliers"] = cluster_points  # Store outliers separately
 
         return clusters
+
+    def lanemarkings_from_buffer(self, lanemarkings):
+        s = time.time()
+        new_lanemarkings = []
+        if not self.last_lanemarkings:
+            return new_lanemarkings
+        buffered_lanemarkings = self.last_lanemarkings
+        buffered_y_positions = np.array(
+            [
+                lanemarking.transform.translation()._matrix[1]
+                for lanemarking in buffered_lanemarkings
+            ]
+        ).reshape(-1, 1)
+        new_y_positions = np.array(
+            [
+                lanemarking.transform.translation()._matrix[1]
+                for lanemarking in lanemarkings
+            ]
+        ).reshape(-1, 1)
+        # k-d-Baum für das zweite Array erstellen
+        tree = KDTree(new_y_positions)
+        for index, position in enumerate(buffered_y_positions):
+            distance, _ = tree.query(position)
+            if distance > self.buffer_threshold:
+                new_lanemarkings.append(buffered_lanemarkings[index])
+        e = time.time()
+        duration = e - s
+        return new_lanemarkings
 
     # currently not used. Needs improvements in future
     def predict_lanemarkings(self, centers, angles, confidences, stamp):

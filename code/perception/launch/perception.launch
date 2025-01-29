@@ -86,7 +86,7 @@
   </node>
 
 
-  <node pkg="perception" type="lane_position.py" name="lane_position" output="screen">
+  <node pkg="perception" type="debug_wrapper.py" name="lane_position" output="screen" args="--debug_node=lane_position.py --debug_port=53000">
     <param name="epsilon_clustering" value="1.8"/><!--parameter to play with, if you want to fine-tune the performance-->
     <param name="min_samples_clustering" value="4"/><!--parameter to play with, if you want to fine-tune the performance-->
     <param name="confidence_threshold" value="0.6"/><!--parameter to play with, if you want to fine-tune the performance-->
