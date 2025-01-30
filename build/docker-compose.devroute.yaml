@@ -11,6 +11,6 @@ services:
       file: agent_service.yaml
       service: agent
     environment:
-      - ROUTE=/workspace/code/routes/route_intersection_red_light_bicycle.xml
-      # - ROUTE=/workspace/code/routes/routes_simple.xml
+      #- ROUTE=/workspace/code/routes/route_intersection_red_light_bicycle.xml
+      - ROUTE=/workspace/code/routes/routes_simple.xml
     command: bash -c "sleep 10 && sudo chown -R ${USER_UID}:${USER_GID} ../ && sudo chmod -R a+w ../ && (rqt_console &) && python3 /opt/leaderboard/leaderboard/leaderboard_evaluator.py --debug=0 --routes=$${ROUTE} --agent=/workspace/code/agent/src/agent/agent.py --host=$${CARLA_SIM_HOST} --track=MAP"

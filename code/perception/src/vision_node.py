@@ -141,20 +141,9 @@ class VisionNode(CompatibleNode):
         if self.device == "cuda":
             torch.cuda.empty_cache()
 
-        time_start = time_ns()
         vision_result = self.predict_ultralytics(
             image, return_image=self.view_camera, image_size=self.camera_resolution
         )
-        time_delta = (time_ns() - time_start) / 1e6
-        if self.timestart:
-            self.timesum += time_delta
-            self.timenum += 1
-            printTime = self.timesum / self.timenum
-            rospy.loginfo(
-                f"runtime: {printTime} ms   timesum: {self.timesum} timenum: {self.timenum}"
-            )
-        elif time_delta < 90:
-            self.timestart = True
 
         if vision_result is None:
             return
@@ -200,6 +189,7 @@ class VisionNode(CompatibleNode):
         Returns:
             (cv image): visualization output for rvizw
         """
+
         scaled_masks = None
         # preprocess image
         cv_image = self.bridge.imgmsg_to_cv2(
@@ -221,6 +211,16 @@ class VisionNode(CompatibleNode):
             and self.lidar_array is not None
         ):
             return None
+
+        if image.header.frame_id == "hero/Zoom":
+            rospy.logfatal("in zoom if")
+            if 9 in output[0].boxes.cls:
+                asyncio.run(
+                    self.process_traffic_lights(
+                        output[0], cv_image, deepcopy(image.header)
+                    )
+                )
+            return
 
         carla_classes = np.array(coco_to_carla)[
             output[0].boxes.cls.to(torch.int).cpu().numpy()  # type: ignore

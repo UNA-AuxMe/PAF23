@@ -26,7 +26,7 @@ class ZoomLightNode(CompatibleNode):
         self.role_name = self.get_param("role_name", "hero")
         self.side = self.get_param("side", "Zoom")
         print("------------------------------------------------------------------")
-        print(f"traffic_light_node.py -> self.side: {self.side}")
+        print(f"zoom_light_node.py -> self.side: {self.side}")
         print("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         self.classifier = TrafficLightInference(self.get_param("model", ""))
         self.last_info_time: datetime = None
