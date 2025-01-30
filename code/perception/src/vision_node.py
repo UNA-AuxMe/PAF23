@@ -80,6 +80,13 @@ class VisionNode(CompatibleNode):
             qos_profile=1,
         )
 
+        self.new_subscription(
+            msg_type=numpy_msg(ImageMsg),
+            callback=self.handle_zoom_image,
+            topic=f"/carla/{self.role_name}/Zoom/image",
+            qos_profile=1,
+        )
+
     def setup_publisher(self):
         """
         sets up all publishers for the Vision-Node
@@ -105,7 +112,7 @@ class VisionNode(CompatibleNode):
 
         self.traffic_light_publisher = self.new_publisher(
             msg_type=numpy_msg(ImageMsg),
-            topic=f"/paf/{self.role_name}/Center/segmented_traffic_light",
+            topic=f"/paf/{self.role_name}/Zoom/segmented_traffic_light",
             qos_profile=1,
         )
 
@@ -152,6 +159,21 @@ class VisionNode(CompatibleNode):
         img_msg = self.bridge.cv2_to_imgmsg(vision_result, encoding="bgr8")
         img_msg.header = image.header
         self.publisher_center.publish(img_msg)
+
+    def handle_zoom_image(self, image):
+        """
+        This function handles a new camera image and publishes the
+        calculated visualization according to the correct camera angle
+
+        Args:
+            image (image msg): Image from camera scubscription
+        """
+
+        # free up cuda memory
+        if self.device == "cuda":
+            torch.cuda.empty_cache()
+
+        self.predict_ultralytics(image, return_image=self.view_camera, image_size=720)
 
     def handle_dist_array(self, dist_array):
         """
@@ -407,14 +429,14 @@ class VisionNode(CompatibleNode):
             print(
                 f"box 0, 1, 2, 3, 4: {box[0]}, {box[1]}, {box[2]}, {box[3]}, {box[4]}"
             )
-            if box[4] < min_prob:
-                continue
+            # if box[4] < min_prob:
+            #     continue
 
-            if (box[2] - box[0]) * 1.5 > box[3] - box[1]:
-                continue  # ignore horizontal boxes
+            # if (box[2] - box[0]) * 1.5 > box[3] - box[1]:
+            #     continue  # ignore horizontal boxes
 
-            if box[1] > max_y:
-                continue
+            # if box[1] > max_y:
+            #     continue
 
             box = box[0:4].astype(int)
             segmented = cv_image[box[1] : box[3], box[0] : box[2]]

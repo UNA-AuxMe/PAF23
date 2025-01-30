@@ -53,22 +53,7 @@
     <param name="model" value="yolo11n-seg" />
   </node>
 
-   <node pkg="perception" type="zoom_node.py" name="ZoomNode" output="screen">
-    <param name="role_name" value="$(arg role_name)" />
-    <param name="view_camera" value="False" />
-    <param name="camera_resolution" value="720"/>
 
-      <!--
-        Image-Segmentation:
-      - yolov8x-seg
-      - yolo11n-seg
-      - yolo11s-seg
-      - yolo11m-seg
-      - yolo11l-seg
-      -->
-
-    <param name="model" value="yolo11s-seg" />
-  </node>
 
   <node pkg="perception" type="traffic_light_node.py" name="TrafficLightNode" output="screen">
     <param name="role_name" value="$(arg role_name)" />
