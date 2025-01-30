@@ -1,9 +1,17 @@
 from collections import namedtuple
 
+import rospy
+
 
 def convert_to_ms(speed):
     return speed / 3.6
 
+
+# Speeds as Parameters:
+intersection_enter_speed = rospy.get_param("/intersection_enter_speed", 50)
+intersection_approach_speed = rospy.get_param("/intersection_approach_speed", 50)
+
+# End Parameters
 
 Behavior = namedtuple("Behavior", ("name", "speed"))
 
@@ -11,34 +19,29 @@ Behavior = namedtuple("Behavior", ("name", "speed"))
 
 parking = Behavior("parking", convert_to_ms(30.0))
 
-# Intersection - Behaviors
+# INTERSECTION BEHAVIORS
 
 # Approach
-
-int_app_init = Behavior("int_app_init", convert_to_ms(30.0))
+int_app_init = Behavior("int_app_init", convert_to_ms(intersection_approach_speed))
 
 # No Traffic Light or Sign -> stop dynamically at Stopline
 int_app_to_stop = Behavior("int_app_to_stop", -2)
 
-int_app_green = Behavior("int_app_green", convert_to_ms(30.0))
+int_app_green = Behavior("int_app_green", convert_to_ms(intersection_enter_speed))
 
 # Wait
-
 int_wait = Behavior("int_wait", 0)
 
 # Enter
-
-int_enter = Behavior("int_enter", convert_to_ms(50.0))
+int_enter = Behavior("int_enter", convert_to_ms(intersection_enter_speed))
 
 # Exit
-
 int_exit = Behavior("int_exit", -1)  # Get SpeedLimit dynamically
 
 
-# Lane Change
+# LANE CHANGE
 
 # Approach
-
 lc_app_init = Behavior("lc_app_init", convert_to_ms(30.0))
 
 # Stop dynamically at lane change point
@@ -50,11 +53,9 @@ lc_app_free = Behavior("lc_app_free", convert_to_ms(30.0))
 lc_wait = Behavior("lc_wait", 0)
 
 # Enter
-
 lc_enter_init = Behavior("lc_enter_init", convert_to_ms(20.0))
 
 # Exit
-
 lc_exit = Behavior("lc_exit", -1)  # Get SpeedLimit dynamically
 
 

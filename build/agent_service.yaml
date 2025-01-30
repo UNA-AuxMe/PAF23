@@ -29,7 +29,7 @@ services:
       - CARLA_SIM_HOST=carla-simulator
       - ROS_HOSTNAME=agent
       - XDG_RUNTIME_DIR=/tmp/runtime-carla
-      - ROUTE=/opt/leaderboard/data/routes_devtest.xml
+      #- ROUTE=/opt/leaderboard/data/routes_devtest.xml
       - DEBUG_WRAPPER_DEFAULT_HOST=0.0.0.0
       # Simple route without special scenarios
       #- ROUTE=/workspace/code/routes/routes_simple.xml
@@ -38,7 +38,7 @@ services:
       #- ROUTE=/workspace/code/routes/routes_construction_sign.xml
       #- ROUTE=/workspace/code/routes/routes_construction_sign2.xml
       #- ROUTE=/workspace/code/routes/routes_curve.xml
-      #- ROUTE=/workspace/code/routes/routes_firetruck_crash.xml
+      - ROUTE=/workspace/code/routes/routes_firetruck_crash.xml
       #- ROUTE=/workspace/code/routes/routes_intersection_pedestrian.xml
       #- ROUTE=/workspace/code/routes/routes_intersection_stop_sign.xml
       #- ROUTE=/workspace/code/routes/routes_open_door.xml

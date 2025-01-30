@@ -2,13 +2,13 @@
 
 **Summary:** This file explains the Intersection behavior.
 
-- [Intersection Behavior](#intersection-behavior)
-  - [General](#general)
-  - [Intersection Ahead](#intersection-ahead)
-  - [Approach](#approach)
-  - [Wait](#wait)
-  - [Enter](#enter)
-  - [Leave](#leave)
+- [General](#general)
+- [Intersection ahead](#intersection-ahead)
+- [Approach](#approach)
+- [Wait](#wait)
+- [Enter](#enter)
+- [Leave](#leave)
+- [Intersection behavior speed tuning results](#intersection-behavior-speed-tuning-results)
 
 ## General
 
@@ -45,3 +45,12 @@ Returns SUCCESS once the next waypoint is not this intersection anymore.
 ## Leave
 
 Signifies that the vehicle has left the intersection and simply returns FAILURE to leave the Intersection sequence.
+
+## Intersection behavior speed tuning results
+
+Left turn with pedestrian:
+Faster (50km/h) results in crash, Slower(15,10) results in crash aswell
+Right turn:
+Seems to be working fine with 50 km/h, is likely controlled by ACC and not behavior though
+Firetruck:
+50 km/h seems to be fast enough 2/2
