@@ -232,7 +232,7 @@ class Entity:
 
     Filter for them with the matches_filter(f) function and a FlagFilter
     """
-    uuid: UUID = uuid4()
+    uuid: UUID = field(default_factory=uuid4)
     """Unique id of the entity in the map, set by the map
 
     If the entity is tracked, this id is persistent across map data frames
@@ -374,6 +374,31 @@ class Entity:
     def to_shapely(self) -> "ShapelyEntity":
         return ShapelyEntity(self, self.shape.to_shapely(self.transform))
 
+    def is_mergeable_with(self, other: "Entity") -> bool:
+        """Returns if self should be merged/combined with other at all
+
+        Mainly used in the filtering steps of the intermediate layer map
+
+        Args:
+            other (Entity): Other entity to merge with
+
+        Returns:
+            bool: If self and other should be merged at all
+        """
+        if self.flags._is_collider is not other.flags._is_collider:
+            return False
+        if self.flags._is_lanemark is not other.flags._is_lanemark:
+            return False
+        if self.flags._is_stopmark is not other.flags._is_stopmark:
+            return False
+        if self.flags._is_hero is not other.flags._is_hero:
+            # This limitation might be removed later if there are no rectangular
+            # clusters used anymore that might falsely overlap with the hero.
+            return False
+        if not (isinstance(self, type(other)) or isinstance(other, type(self))):
+            return False
+        return True
+
 
 @dataclass(init=False)
 class Car(Entity):
@@ -417,24 +442,60 @@ class Car(Entity):
 @dataclass(init=False)
 class Lanemarking(Entity):
     style: "Lanemarking.Style"
+    position_index: int
+    predicted: bool
 
     class Style(Enum):
         SOLID = 0
         DASHED = 1
 
-    def __init__(self, style: "Lanemarking.Style", **kwargs):
+    def __init__(
+        self, style: "Lanemarking.Style", position_index: int, predicted: bool, **kwargs
+    ):
         super().__init__(**kwargs)
         self.style = style
+        self.position_index = position_index
+        self.predicted = predicted
 
     @staticmethod
     def _extract_kwargs(m: msg.Entity) -> Dict:
-        kwargs = super(TrafficLight, TrafficLight)._extract_kwargs(m)
+        kwargs = super(Lanemarking, Lanemarking)._extract_kwargs(m)
         kwargs["style"] = Lanemarking.Style(m.type_lanemarking.style)
+        kwargs["position_index"] = m.type_lanemarking.position_index
+        kwargs["predicted"] = m.type_lanemarking.predicted
         return kwargs
 
     def to_ros_msg(self, base_msg: Optional[msg.Entity] = None) -> msg.Entity:
         m = super().to_ros_msg()
-        m.type_lanemarking = msg.TypeLanemarking(style=self.style.value)
+        m.type_lanemarking = msg.TypeLanemarking(
+            style=self.style.value,
+            position_index=self.position_index,
+            predicted=self.predicted,
+        )
+        return m
+
+    def to_marker(self) -> Marker:
+        """Creates an ROS marker based on the entity
+
+        Returns:
+            Marker: ROS marker message
+        """
+        m = self.shape.to_marker(self.transform)
+
+        if self.predicted:
+            m.color.a = 0.5
+            m.color.r = int(255 * self.confidence)
+            m.color.g = 0
+            m.color.b = 0
+        else:
+            m.color.a = 0.5
+            m.color.r = 0
+            m.color.g = 0
+            m.color.b = int(255 * self.confidence)
+
+        m.scale.z = 0.1
+        m.pose.position.z = m.scale.z / 2.0
+
         return m
 
 

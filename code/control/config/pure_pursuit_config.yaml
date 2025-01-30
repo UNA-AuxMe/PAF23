@@ -1,0 +1,4 @@
+k_lad: 0.85
+min_la_distance: 3
+max_la_distance: 25
+k_pub: 0.8

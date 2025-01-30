@@ -52,6 +52,8 @@ def test_lanemark_conversion():
         shape=get_shape(),
         transform=get_transform(),
         style=entity.Lanemarking.Style.SOLID,
+        position_index=1,
+        predicted=False,
     )
     msg = e.to_ros_msg()
     e_conv = entity.Entity.from_ros_msg(msg)

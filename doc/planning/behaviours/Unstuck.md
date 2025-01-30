@@ -16,9 +16,14 @@ The Unstuck Behavior works with two Timers:
 
 Whenever we are driving at some velocity > 0.1 the timers are reset.
 
+Also if we are in a planned waiting behaviors (currently bs.int_wait.name, bs.lc_wait.name, bs.ot_wait_stopped) or don't have set a behavior yet
+(means we are in unparking but not yet started driving -> Wait for lane free) the stuck timer gets reset. This will prevent triggering the unstuck
+routine when we still wait scheduled. As we still have the wait stuck timer there is no chance to get in a 'hard' stuck here when something went
+wrong in the waiting behaviors.
+
 If we get into a situation where the velocity <= 0.1 the timers start running.
 
-We can then either trigger the Wait Stuck Timer condition (currently 50 secs)
+We can then either trigger the Wait Stuck Timer condition (currently 60 secs)
 after not moving for longer than that duration -> Wait Stuck
 
 OR

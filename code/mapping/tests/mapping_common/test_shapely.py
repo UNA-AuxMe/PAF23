@@ -119,3 +119,22 @@ def test_map_tree_query_nearest():
     assert len(query) == 1
     assert query[0][0].entity == entities[2]
     assert query[0][1] == 1.0
+
+
+def test_map_tree_query_self():
+    car = test_entity.get_car()
+    car_transform = Transform2D.identity()
+    car_shape = shape.Rectangle(3.0, 3.0)
+    car.transform = car_transform
+    car.shape = car_shape
+    entities = [car]
+    entities += get_test_entities()
+
+    map = Map(entities=entities)
+    tree = map.build_tree(f=entity.FlagFilter(is_collider=True))
+
+    query = tree.query_self()
+
+    assert len(query) == 1
+    assert query[0][0].entity == entities[0]
+    assert query[0][1].entity == entities[3]

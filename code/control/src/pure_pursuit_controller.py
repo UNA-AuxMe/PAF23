@@ -12,14 +12,12 @@ from acting.msg import Debug
 import numpy as np
 
 from acting.helper_functions import vector_angle, points_to_vector
+from typing import Tuple, Optional
 
-# Tuneable Values for PurePursuit-Algorithm
-K_LAD = 0.85  # optimal in dev-launch
-MIN_LA_DISTANCE = 2
-MAX_LA_DISTANCE = 25
-# Tuneable Factor before Publishing
-# "-1" because it is inverted to the steering carla expects
-K_PUB = -0.80  # (-4.75) would be optimal in dev-launch
+from control.cfg import PurePursuitConfig
+from dynamic_reconfigure.server import Server
+
+
 # Constant: wheelbase of car
 L_VEHICLE = 2.85
 
@@ -65,11 +63,26 @@ class PurePursuitController(CompatibleNode):
             Debug, f"/paf/{self.role_name}/pure_p_debug", qos_profile=1
         )
 
-        self.__position: tuple[float, float] = None  # x, y
-        self.__path: Path = None
-        self.__heading: float = None
-        self.__velocity: float = None
-        self.__tp_idx: int = 0  # target waypoint index
+        self.__position: Optional[tuple[float, float]] = None  # x, y
+        self.__path: Optional[Path] = None
+        self.__heading: Optional[float] = None
+        self.__velocity: Optional[float] = None
+
+        # Tuneable Values for PurePursuit-Algorithm
+        self.K_LAD: float
+        self.MIN_LA_DISTANCE: float
+        self.MAX_LA_DISTANCE: float
+        self.K_PUB: float
+        Server(PurePursuitConfig, self.dynamic_reconfigure_callback)
+
+    def dynamic_reconfigure_callback(self, config: "PurePursuitConfig", level):
+        self.K_LAD = config["k_lad"]
+        self.MIN_LA_DISTANCE = config["min_la_distance"]
+        self.MAX_LA_DISTANCE = config["max_la_distance"]
+        self.K_PUB = -config["k_pub"]  # -0.80  # (-4.75) would be optimal in dev-launch
+        # "-1" because it is inverted to the steering carla expects
+
+        return config
 
     def run(self):
         """
@@ -127,11 +140,11 @@ class PurePursuitController(CompatibleNode):
         """
         # la_dist = MIN_LA_DISTANCE <= K_LAD * velocity <= MAX_LA_DISTANCE
         look_ahead_dist = np.clip(
-            K_LAD * self.__velocity, MIN_LA_DISTANCE, MAX_LA_DISTANCE
+            self.K_LAD * self.__velocity, self.MIN_LA_DISTANCE, self.MAX_LA_DISTANCE
         )
         # Get the target position on the trajectory in look_ahead distance
-        self.__tp_idx = self.__get_target_point_index(look_ahead_dist)
-        target_wp: PoseStamped = self.__path.poses[self.__tp_idx]
+        __tp_idx = self.__get_target_point_index(look_ahead_dist)
+        target_wp: PoseStamped = self.__path.poses[__tp_idx]
         # Get the vector from the current position to the target position
         target_v_x, target_v_y = points_to_vector(
             (self.__position[0], self.__position[1]),
@@ -143,7 +156,7 @@ class PurePursuitController(CompatibleNode):
         alpha = target_vector_heading - self.__heading
         # https://thomasfermi.github.io/Algorithms-for-Automated-Driving/Control/PurePursuit.html
         steering_angle = atan((2 * L_VEHICLE * sin(alpha)) / look_ahead_dist)
-        steering_angle = K_PUB * steering_angle  # Needed for unknown reason
+        steering_angle = self.K_PUB * steering_angle  # Needed for unknown reason
         # for debugging ->
         debug_msg = Debug()
         debug_msg.heading = self.__heading
@@ -164,20 +177,36 @@ class PurePursuitController(CompatibleNode):
         if len(self.__path.poses) < 2:
             return -1
 
-        # initialize min dist and idx very high and -1
-        min_dist = 10e1000
-        min_dist_idx = -1
-        # might be more elegant to only look at points
-        # _ahead_ of the closest point on the trajectory
-        for i in range(self.__tp_idx, len(self.__path.poses)):
-            pose: PoseStamped = self.__path.poses[i]
-            dist = self.__dist_to(pose.pose.position)
-            dist2ld = dist - ld
-            # can be optimized
-            if min_dist > dist2ld > 0:
-                min_dist = dist2ld
-                min_dist_idx = i
-        return min_dist_idx
+        closest_index = np.argmin(
+            np.array([self.__dist_to(pose.pose.position) for pose in self.__path.poses])
+        )
+
+        ld_distances = np.array(
+            [
+                self.__dist_to(pose.pose.position) - ld
+                for pose in self.__path.poses[closest_index:]
+            ]
+        )
+        min_dist_idx = np.argmin(np.abs(ld_distances))
+        return closest_index + min_dist_idx
+
+    def __is_ahead(self, pos: Tuple[float, float]) -> bool:
+        x, y = pos
+        c_x, c_y = self.__position
+        to_car = np.array([x - c_x, y - c_y])
+        heading = self.__rotate_vector_2d(np.array([1.0, 0.0]), self.__heading)
+
+        return np.dot(to_car, heading) > 1
+
+    def __rotate_vector_2d(self, vector, angle_rad):
+        rotation_matrix = np.array(
+            [
+                [np.cos(angle_rad), -np.sin(angle_rad)],
+                [np.sin(angle_rad), np.cos(angle_rad)],
+            ]
+        )
+
+        return rotation_matrix @ np.array(vector)
 
     def __dist_to(self, pos: Point) -> float:
         """

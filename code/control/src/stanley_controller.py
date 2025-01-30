@@ -14,8 +14,8 @@ from acting.msg import StanleyDebug
 
 from acting.helper_functions import vector_angle, points_to_vector
 
-
-K_CROSSERR = 0.4  # 1.24 was optimal in dev-launch!
+from dynamic_reconfigure.server import Server
+from control.cfg import StanleyConfig
 
 
 class StanleyController(CompatibleNode):
@@ -64,6 +64,13 @@ class StanleyController(CompatibleNode):
         self.__path: Path = None
         self.__heading: float = None
         self.__velocity: float = None
+
+        self.K_CROSSERR: float = 0.4  # 1.24 was optimal in dev-launch!
+        Server(StanleyConfig, self.dynamic_reconfigure_callback)
+
+    def dynamic_reconfigure_callback(self, config, level):
+        self.K_CROSSERR = config["k_crosserr"]
+        return config
 
     def run(self):
         """
@@ -133,7 +140,7 @@ class StanleyController(CompatibleNode):
         cross_err = self.__get_cross_err(closest_point.pose.position)
         # * -1 because it is inverted compared to PurePursuit
         steering_angle = 1 * (
-            heading_err + atan((K_CROSSERR * cross_err) / current_velocity)
+            heading_err + atan((self.K_CROSSERR * cross_err) / current_velocity)
         )
         # -> for debugging
         debug_msg = StanleyDebug()

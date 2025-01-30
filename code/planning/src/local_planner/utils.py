@@ -240,3 +240,20 @@ def filter_vision_objects(float_array, oncoming):
             return None
 
     return min_object_in_front
+
+
+def convert_pose_to_array(poses: np.ndarray) -> np.ndarray:
+    """Convert an array of PoseStamped objects to a numpy array of positions.
+
+    Args:
+        poses (np.ndarray): Array of PoseStamped objects.
+
+    Returns:
+        np.ndarray: Numpy array of shape (n, 2) containing the x and y positions.
+    """
+    result_array = np.empty((len(poses), 2))
+    for pose in range(len(poses)):
+        result_array[pose] = np.array(
+            [poses[pose].pose.position.x, poses[pose].pose.position.y]
+        )
+    return result_array

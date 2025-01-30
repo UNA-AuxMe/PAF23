@@ -210,7 +210,7 @@ class LidarDistance:
         """
         # Define bounding box parameters based on focus direction
         bounding_box_params = {
-            "Center": {"max_x": np.inf, "min_x": 0.0, "min_z": -1.6},
+            "Center": {"max_x": np.inf, "min_x": 0.0, "min_z": -np.inf},
             "Back": {"max_x": 0.0, "min_x": -np.inf, "min_z": -1.6},
             "Left": {"max_y": np.inf, "min_y": 0.0, "min_z": -1.6},
             "Right": {"max_y": -0.0, "min_y": -np.inf, "min_z": -1.6},

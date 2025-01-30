@@ -1,6 +1,5 @@
 from leaderboard.autoagents.ros1_agent import ROS1Agent
 from leaderboard.autoagents.autonomous_agent import Track
-import math
 
 
 def get_entry_point():
@@ -61,15 +60,27 @@ class PAFAgent(ROS1Agent):
             },
             {
                 "type": "sensor.other.radar",
-                "id": "RADAR",
+                "id": "RADAR0",
                 "x": 2.0,
-                "y": 0.0,
-                "z": 0.7,
+                "y": 1.5,
+                "z": 1,
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
-                "horizontal_fov": 30,
-                "vertical_fov": 30,
+                "horizontal_fov": 25,
+                "vertical_fov": 0.1,
+            },
+            {
+                "type": "sensor.other.radar",
+                "id": "RADAR1",
+                "x": 2.0,
+                "y": -1.5,
+                "z": 1,
+                "roll": 0.0,
+                "pitch": 0.0,
+                "yaw": 0.0,
+                "horizontal_fov": 25,
+                "vertical_fov": 0.1,
             },
             {"type": "sensor.other.gnss", "id": "GPS", "x": 0.0, "y": 0.0, "z": 0.0},
             {
@@ -81,6 +92,15 @@ class PAFAgent(ROS1Agent):
                 "roll": 0.0,
                 "pitch": 0.0,
                 "yaw": 0.0,
+                "noise_accel_stddev_x": 0.0,
+                "noise_accel_stddev_y": 0.0,
+                "noise_accel_stddev_z": 0.0,
+                "noise_gyro_stddev_x": 0.0,
+                "noise_gyro_stddev_y": 0.0,
+                "noise_gyro_stddev_z": 0.0,
+                "noise_gyro_bias_x": 0.0,
+                "noise_gyro_bias_y": 0.0,
+                "noise_gyro_bias_z": 0.0,
             },
             {"type": "sensor.opendrive_map", "id": "OpenDRIVE", "reading_frequency": 1},
             {"type": "sensor.speedometer", "id": "Speed"},

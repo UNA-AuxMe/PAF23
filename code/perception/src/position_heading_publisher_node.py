@@ -367,7 +367,6 @@ def main(args=None):
     :param args:
     :return:
     """
-
     roscomp.init("position_heading_publisher_node", args=args)
     try:
         node = PositionHeadingPublisherNode()

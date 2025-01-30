@@ -1,0 +1,5 @@
+pid_p: 0.6
+pid_i: 0.00076
+pid_d: 0.63
+fixed_speed: 0.0
+fixed_speed_active: False

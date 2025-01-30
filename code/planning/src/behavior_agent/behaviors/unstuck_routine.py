@@ -6,7 +6,7 @@ from behaviors import behavior_speed as bs
 
 TRIGGER_STUCK_SPEED = 0.1  # default 0.1 (m/s)
 TRIGGER_STUCK_DURATION = rospy.Duration(20)  # default 8 (s)
-TRIGGER_WAIT_STUCK_DURATION = rospy.Duration(50)  # default 25 (s)
+TRIGGER_WAIT_STUCK_DURATION = rospy.Duration(60)  # default 25 (s)
 UNSTUCK_DRIVE_DURATION = rospy.Duration(1.2)  # default 1.2 (s)
 UNSTUCK_CLEAR_DISTANCE = 1.5  # default 1.5 (m)
 
@@ -132,6 +132,7 @@ class UnstuckRoutine(py_trees.behaviour.Behaviour):
 
         self.current_speed = self.blackboard.get("/carla/hero/Speed")
         target_speed = self.blackboard.get("/paf/hero/target_velocity")
+        curr_behavior = self.blackboard.get("/paf/hero/curr_behavior")
 
         # check for None values and initialize if necessary
         if self.current_speed is None:
@@ -152,6 +153,15 @@ class UnstuckRoutine(py_trees.behaviour.Behaviour):
             if target_speed.data >= TRIGGER_STUCK_SPEED:
                 # reset stuck timer
                 self.stuck_timer = rospy.Time.now()
+
+        wait_behaviors = [bs.int_wait.name, bs.lc_wait.name, bs.ot_wait_stopped]
+
+        # when no curr_behavior (before unparking lane free) or
+        # a wait behavior occurs, reset the stuck timer
+        if curr_behavior is None or curr_behavior.data in wait_behaviors:
+            # reset stuck timer
+            self.stuck_timer = rospy.Time.now()
+            rospy.loginfo("Plannend waiting, reset stuck timer")
 
         # update the stuck durations
         self.stuck_duration = rospy.Time.now() - self.stuck_timer

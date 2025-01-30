@@ -1,11 +1,13 @@
 <launch>
   <arg name="map_publish_rate" default="20" />
+  <arg name="polygon_simplify_tolerance" default="0.1" />
 
   <arg name="enable_radar_marker" default="True" />
   <arg name="enable_lidar_marker" default="True" />
   <arg name="enable_radar_cluster" default="True" />
   <arg name="enable_lidar_cluster" default="True" />
   <arg name="enable_raw_lidar_points" default="False" />
+  <arg name="enable_lane_marker" default="True" />
   <arg name="enable_vision_points" default="True" />
 
   <arg name="lidar_z_min" default="-1.5" />
@@ -14,16 +16,23 @@
   <arg name="lidar_priority" default="0.25" />
   <arg name="lidar_discard_probability" default="0.9" />
 
+  <arg name="enable_merge_filter" default="True" />
+  <arg name="merge_growth_distance" default="0.3" />
+  <arg name="min_merging_overlap_percent" default="0.5" />
+  <arg name="min_merging_overlap_area" default="0.5" />
+
 
   <node pkg="mapping" type="mapping_data_integration.py" name="mapping_data_integration"
     output="screen">
     <param name="map_publish_rate" value="$(arg map_publish_rate)" />
+    <param name="polygon_simplify_tolerance" value="$(arg polygon_simplify_tolerance)" />
 
     <param name="enable_radar_marker" value="$(arg enable_radar_marker)" />
     <param name="enable_lidar_marker" value="$(arg enable_lidar_marker)" />
     <param name="enable_radar_cluster" value="$(arg enable_radar_cluster)" />
     <param name="enable_lidar_cluster" value="$(arg enable_lidar_cluster)" />
     <param name="enable_raw_lidar_points" value="$(arg enable_raw_lidar_points)" />
+    <param name="enable_lane_marker" value="$(arg enable_lane_marker)" />
     <param name="enable_vision_points" value="$(arg enable_vision_points)" />
 
     <!-- Raw Lidar entity configuration -->
@@ -32,6 +41,12 @@
     <param name="lidar_shape_radius" value="$(arg lidar_shape_radius)" />
     <param name="lidar_priority" value="$(arg lidar_priority)" />
     <param name="lidar_discard_probability" value="$(arg lidar_discard_probability)" />
+
+    <!-- Map filter configuration -->
+    <param name="enable_merge_filter" value="$(arg enable_merge_filter)" />
+    <param name="merge_growth_distance" value="$(arg merge_growth_distance)" />
+    <param name="min_merging_overlap_percent" value="$(arg min_merging_overlap_percent)" />
+    <param name="min_merging_overlap_area" value="$(arg min_merging_overlap_area)" />
   </node>
 
 </launch>

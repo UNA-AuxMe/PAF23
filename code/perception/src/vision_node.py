@@ -199,7 +199,7 @@ class VisionNode(CompatibleNode):
 
         # run model prediction
 
-        output = self.model.track(
+        output = self.model(
             cv_image, half=True, verbose=False, imgsz=image_size  # type: ignore
         )
         if not (

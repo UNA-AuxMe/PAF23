@@ -18,7 +18,8 @@ Cmake executes pip to compile and install the mapping_common module to the user'
 - [./msg](./msg/) contains the ROS message types for transmitting the map
 - [./ext_modules/mapping_common](./ext_modules/mapping_common/) contains the **python classes for working with the map**.
   ROS messages can be converted into these python classes by using `<Type>.from_ros_msg(msg)`
-  - **Important: This package is compiled with Cython. If changes have been made to this package, catkin_make needs to be executed to apply them!**
+  - **Important: This package is compiled with Cython. If changes have been made to this package, catkin_make needs to be executed to apply them!** \
+    In the leaderboard docker config, catkin_make is automatically executed on start.
 
 The base data type is the [Map](./ext_modules/mapping_common/map.py). It consists out of [Entities](./ext_modules/mapping_common/entity.py).
 
@@ -32,7 +33,8 @@ Quick overview of the data flow inside the intermediate layer
 flowchart TD
     NF{New empty dataframe} --> A[node: mapping_data_integration]
     S{Sensors} --> A
-    A -->|topic: /paf/hero/mapping/init_data| 1[node: mapping_visualization]
+    A --> F1(filter: GrowthMergingFilter)
+    F1 -->|topic: /paf/hero/mapping/init_data| 1[node: mapping_visualization]
 ```
 
 This information is kept up-to-date with the package

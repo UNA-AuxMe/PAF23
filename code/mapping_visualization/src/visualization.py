@@ -13,6 +13,8 @@ from rospy import Duration
 from mapping_common.entity import Entity
 from mapping_common.map import Map
 
+MARKER_NAMESPACE: str = "map"
+
 
 class Visualization(CompatibleNode):
     """The visualization for the intermediate layer.
@@ -49,6 +51,7 @@ class Visualization(CompatibleNode):
     def map_callback(self, data: MapMsg):
         map = Map.from_ros_msg(data)
         marker_array = MarkerArray()
+        marker_array.markers.append(self.create_deleteall_marker())
 
         marker_timestamp = roscomp.ros_timestamp(self.get_time(), from_sec=True)
         for id, entity in enumerate(map.entities):
@@ -59,13 +62,21 @@ class Visualization(CompatibleNode):
 
         self.marker_publisher.publish(marker_array)
 
+    def create_deleteall_marker(self) -> Marker:
+        """Creates a marker that deletes all markers in RViz for this topic.
+
+        Prepend this to the MarkerArray to delete all markers
+        before the new ones are displayed.
+        """
+        return Marker(ns=MARKER_NAMESPACE, action=Marker.DELETEALL)
+
     def create_marker_from_entity(self, id, entity: Entity, timestamp) -> Marker:
         marker = entity.to_marker()
         marker.header.frame_id = "hero"
         marker.header.stamp = timestamp
-        marker.ns = "m"
+        marker.ns = MARKER_NAMESPACE
         marker.id = id
-        marker.lifetime = Duration.from_sec(1.25 / 20.0)
+        marker.lifetime = Duration.from_sec(2.0 / 20.0)
 
         return marker
 

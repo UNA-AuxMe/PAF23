@@ -7,6 +7,9 @@ from simple_pid import PID
 from std_msgs.msg import Float32, Bool
 import rospy
 
+from dynamic_reconfigure.server import Server
+from control.cfg import VelocityConfig
+
 
 class VelocityController(CompatibleNode):
     """
@@ -49,6 +52,20 @@ class VelocityController(CompatibleNode):
 
         self.__current_velocity: float = None
         self.__target_velocity: float = None
+        self.pid_t = PID(0.60, 0.00076, 0.63)
+
+        self.FIXED_SPEED_OVERRIDE: bool
+        self.FIXED_SPEED: float
+
+        Server(VelocityConfig, self.dynamic_reconfigure_callback)
+
+    def dynamic_reconfigure_callback(self, config: VelocityConfig, level):
+        self.pid_t.Kp = config["pid_p"]
+        self.pid_t.Ki = config["pid_i"]
+        self.pid_t.Kd = config["pid_d"]
+        self.FIXED_SPEED = config["fixed_speed"]
+        self.FIXED_SPEED_OVERRIDE = config["fixed_speed_active"]
+        return config
 
     def run(self):
         """
@@ -57,9 +74,9 @@ class VelocityController(CompatibleNode):
         """
         self.loginfo("VelocityController node running")
         # PID for throttle
-        pid_t = PID(0.60, 0.00076, 0.63)
+
         # since we use this for braking aswell, allow -1 to 0.
-        pid_t.output_limits = (-1.0, 1.0)
+        self.pid_t.output_limits = (-1.0, 1.0)
 
         def loop(timer_event=None):
             """
@@ -85,16 +102,25 @@ class VelocityController(CompatibleNode):
                 )
                 return
 
-            if self.__target_velocity < 0:
+            target_velocity = (
+                self.__target_velocity
+                if not self.FIXED_SPEED_OVERRIDE
+                else self.FIXED_SPEED
+            )
+
+            if target_velocity < 0:
                 # self.logerr("VelocityController doesn't support backward "
                 #             "driving yet.")
-                if self.__target_velocity == -3:
+                if target_velocity == -3:
                     #  -3 is the signal for reverse driving
                     reverse = True
                     throttle = 1
                     brake = 0
                     rospy.loginfo("VelocityController: reverse driving")
-
+                elif self.FIXED_SPEED_OVERRIDE:
+                    reverse = True
+                    throttle = 1
+                    brake = 0
                 else:
                     #  other negative values only lead to braking
                     reverse = False
@@ -102,16 +128,16 @@ class VelocityController(CompatibleNode):
                     throttle = 0
 
             # very low target_velocities -> stand
-            elif self.__target_velocity < 1:
+            elif target_velocity < 1:
                 reverse = False
                 brake = 1
                 throttle = 0
             else:
                 reverse = False
 
-                v = self.__target_velocity
-                pid_t.setpoint = v
-                throttle = pid_t(self.__current_velocity)
+                v = target_velocity
+                self.pid_t.setpoint = v
+                throttle = self.pid_t(self.__current_velocity)
                 # any throttle < 0 is used as brake signal
                 if throttle < 0:
                     brake = abs(throttle)

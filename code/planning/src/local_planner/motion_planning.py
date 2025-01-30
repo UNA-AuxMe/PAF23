@@ -16,7 +16,13 @@ from ros_compatibility.node import CompatibleNode
 from rospy import Publisher, Subscriber
 from scipy.spatial.transform import Rotation
 from std_msgs.msg import Bool, Float32, Float32MultiArray, Int16, String
-from utils import NUM_WAYPOINTS, TARGET_DISTANCE_TO_STOP, convert_to_ms, spawn_car
+from utils import (
+    NUM_WAYPOINTS,
+    TARGET_DISTANCE_TO_STOP,
+    convert_to_ms,
+    spawn_car,
+    convert_pose_to_array,
+)
 
 sys.path.append(os.path.abspath(sys.path[0] + "/../../planning/src/behavior_agent"))
 from behaviors import behavior_speed as bs  # type: ignore # noqa: E402
@@ -281,7 +287,7 @@ class MotionPlanning(CompatibleNode):
                 + int(distance)
                 + NUM_WAYPOINTS
             ]
-        waypoints = self.convert_pose_to_array(selection)
+        waypoints = convert_pose_to_array(selection)
 
         if unstuck is True:
             offset = np.array([unstuck_x_offset, 0, 0])
@@ -348,7 +354,7 @@ class MotionPlanning(CompatibleNode):
             list: A list of lists, where each sublist contains 2D points that form a
                 corner.
         """
-        coords = self.convert_pose_to_array(np.array(self.trajectory.poses))
+        coords = convert_pose_to_array(np.array(self.trajectory.poses))
 
         # TODO: refactor by using numpy functions
         x_values = np.array([point[0] for point in coords])
@@ -448,23 +454,6 @@ class MotionPlanning(CompatibleNode):
             return map_corner(distance_corner)
         else:
             return self.__get_speed_cruise()
-
-    @staticmethod
-    def convert_pose_to_array(poses: np.ndarray) -> np.ndarray:
-        """Convert an array of PoseStamped objects to a numpy array of positions.
-
-        Args:
-            poses (np.ndarray): Array of PoseStamped objects.
-
-        Returns:
-            np.ndarray: Numpy array of shape (n, 2) containing the x and y positions.
-        """
-        result_array = np.empty((len(poses), 2))
-        for pose in range(len(poses)):
-            result_array[pose] = np.array(
-                [poses[pose].pose.position.x, poses[pose].pose.position.y]
-            )
-        return result_array
 
     def __check_emergency(self, data: Bool):
         """If an emergency stop is needed first check if we are
