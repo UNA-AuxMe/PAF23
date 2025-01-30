@@ -219,7 +219,19 @@ class VisionNode(CompatibleNode):
         )
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
 
-        # run model prediction
+        # Step 1: Double the image size
+        h, w = cv_image.shape[:2]  # Get original dimensions
+        new_h, new_w = h * 2, w * 2  # Double the size
+        cv_image = cv2.resize(cv_image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Step 2: Crop the center while keeping the aspect ratio
+        crop_x1 = (new_w - w) // 2
+        crop_x2 = crop_x1 + w
+        crop_y1 = (new_h - h) // 2
+        crop_y2 = crop_y1 + h
+        cropped_image = cv_image[crop_y1:crop_y2, crop_x1:crop_x2]
+
+        # Step 3: Run model prediction on the cropped image
 
         output = self.model(
             cv_image, half=True, verbose=False, imgsz=image_size  # type: ignore
