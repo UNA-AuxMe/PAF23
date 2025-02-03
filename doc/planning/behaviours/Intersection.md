@@ -49,8 +49,9 @@ Signifies that the vehicle has left the intersection and simply returns FAILURE 
 ## Intersection behavior speed tuning results
 
 Left turn with pedestrian:
-Faster (50km/h) results in crash, Slower(15,10) results in crash aswell
+Faster (50km/h) results in crash, Slower(15,10) results in crash aswell (needs to be fixed by lane free detection ?)
 Right turn:
 Seems to be working fine with 50 km/h, is likely controlled by ACC and not behavior though
 Firetruck:
-50 km/h seems to be fast enough 2/2
+50 km/h seems to be fast enough 3/3
+Ambulance in scenario pedestrian behind bus stop is a problem 0/3 (car is able to drive after still)

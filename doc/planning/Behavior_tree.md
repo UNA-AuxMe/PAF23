@@ -37,11 +37,12 @@ For visualization at runtime you might want to also install this [rqt-Plugin](ht
 The following section describes the behavior tree we use for normal driving using all functionality provided by the agent. In the actual implementation this is part of a bigger tree, that handles things like writing topics to the blackboard, starting and finishing the decision tree.
 The following tree is a simplification. The draw.io xml file to update this diagram can be found inside /assets/planning/.
 
-![Simple Tree](../assets/planning/behaviour_tree.PNG)
+![Simple Tree](../assets/planning/behaviour_tree.                continue
 
-### Behavior
-
-Represent an action the decision tree should execute. It has three return values representing the state of the behavior:
+    def __get_local_trajectory(self):
+        """
+        transforms the trajectory to the "hero" coordinate system
+te. It has three return values representing the state of the behavior:
 
 - `SUCCESS`: The action has been performed successfully.
 - `RUNNING`: The action is still being executed.
