@@ -22,6 +22,9 @@ from time import time_ns
 from copy import deepcopy
 import asyncio
 
+from dynamic_reconfigure.server import Server
+from perception.cfg import TrafficLightConfig
+
 
 class VisionNode(CompatibleNode):
     """
@@ -65,6 +68,19 @@ class VisionNode(CompatibleNode):
         self.setup_publisher()
         self.setup_model()
 
+        self.CROP_X1: int
+        self.WIDTH_RATIO: float
+        self.CROP_Y1: int
+        self.HEIGHT_RATIO: float
+        Server(TrafficLightConfig, self.dynamic_reconfigure_callback)
+
+    def dynamic_reconfigure_callback(self, config: TrafficLightConfig, level):
+        self.CROP_X1 = config["crop_x1"]
+        self.WIDTH_RATIO = config["width_ratio"]
+        self.CROP_Y1 = config["crop_y1"]
+        self.HEIGHT_RATIO = config["height_ratio"]
+        return config
+
     def setup_subscriber(self):
         self.new_subscription(
             msg_type=numpy_msg(ImageMsg),
@@ -80,12 +96,12 @@ class VisionNode(CompatibleNode):
             qos_profile=1,
         )
 
-        self.new_subscription(
-            msg_type=numpy_msg(ImageMsg),
-            callback=self.handle_zoom_image,
-            topic=f"/carla/{self.role_name}/Zoom/image",
-            qos_profile=1,
-        )
+        # self.new_subscription(
+        #     msg_type=numpy_msg(ImageMsg),
+        #     callback=self.handle_zoom_image,
+        #     topic=f"/carla/{self.role_name}/Zoom/image",
+        #     qos_profile=1,
+        # )
 
     def setup_publisher(self):
         """
@@ -113,6 +129,18 @@ class VisionNode(CompatibleNode):
         self.traffic_light_publisher = self.new_publisher(
             msg_type=numpy_msg(ImageMsg),
             topic=f"/paf/{self.role_name}/Zoom/segmented_traffic_light",
+            qos_profile=1,
+        )
+
+        self.cropped_interpol_publisher = self.new_publisher(
+            msg_type=numpy_msg(ImageMsg),
+            topic=f"/paf/{self.role_name}/Cropped/image_interpolated",
+            qos_profile=1,
+        )
+
+        self.cropped_publisher = self.new_publisher(
+            msg_type=numpy_msg(ImageMsg),
+            topic=f"/paf/{self.role_name}/Cropped/image",
             qos_profile=1,
         )
 
@@ -219,17 +247,39 @@ class VisionNode(CompatibleNode):
         )
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
 
-        # Step 1: Double the image size
-        h, w = cv_image.shape[:2]  # Get original dimensions
-        new_h, new_w = h * 2, w * 2  # Double the size
-        cv_image = cv2.resize(cv_image, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        # rospy.logfatal("vor pub crop")
+        # crop_image_cv2 = self.bridge.imgmsg_to_cv2(
+        #     img_msg=image, desired_encoding="passthrough"
+        # )
+        # crop_image_cv2 = cv2.cvtColor(crop_image_cv2, cv2.COLOR_RGB2BGR)
+        # crop_image_msg = self.bridge.cv2_to_imgmsg(crop_image_cv2, encoding="rgb8")
+        # crop_image_msg.header = deepcopy(image.header)
+        # self.cropped_publisher.publish(crop_image_msg)
+        # rospy.logfatal("nach pub crop")
 
+        h, w = cv_image.shape[:2]  # Get original dimensions
+        new_h, new_w = h / self.HEIGHT_RATIO, w / self.WIDTH_RATIO  # Double the size
         # Step 2: Crop the center while keeping the aspect ratio
-        crop_x1 = (new_w - w) // 2
-        crop_x2 = crop_x1 + w
-        crop_y1 = (new_h - h) // 2
-        crop_y2 = crop_y1 + h
+        crop_x1 = int(self.CROP_X1)
+        crop_x2 = int(self.CROP_X1 + new_w)
+        crop_y1 = int(self.CROP_Y1)
+        crop_y2 = int(self.CROP_Y1 + new_h)
+        rospy.logfatal(f"x1:{crop_x1}, x2:{crop_x2}, y1:{crop_y1}, y2:{crop_y2}")
         cropped_image = cv_image[crop_y1:crop_y2, crop_x1:crop_x2]
+
+        # Step 1: Double the image size
+
+        crop_image_msg = self.bridge.cv2_to_imgmsg(cropped_image, encoding="rgb8")
+        crop_image_msg.header = deepcopy(image.header)
+        self.cropped_publisher.publish(crop_image_msg)
+
+        resized_cv_image = cv2.resize(
+            cropped_image, (w, h), interpolation=cv2.INTER_LINEAR
+        )
+
+        crop_image_msg = self.bridge.cv2_to_imgmsg(resized_cv_image, encoding="rgb8")
+        crop_image_msg.header = deepcopy(image.header)
+        self.cropped_interpol_publisher.publish(crop_image_msg)
 
         # Step 3: Run model prediction on the cropped image
 

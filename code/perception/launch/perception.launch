@@ -40,6 +40,7 @@
     <param name="role_name" value="$(arg role_name)" />
     <param name="view_camera" value="$(arg view_camera)" />
     <param name="camera_resolution" value="$(arg camera_resolution)"/>
+    <rosparam file="$(find control)/config/traffic_light_config.yaml" command="load" />
 
     <!--
         Image-Segmentation:
