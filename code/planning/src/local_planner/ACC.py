@@ -267,10 +267,13 @@ class ACC(CompatibleNode):
                     self.velocity_pub.publish(safe_speed)
                 else:
                     # If safety distance is reached just hold current speed
-                    if self.__current_velocity < 1.0:
+                    if (
+                        self.__current_velocity < 1.0
+                        and self.leading_vehicle_distance < 1.0
+                    ) or self.leading_vehicle_distance < 6.0:  # Emergency stop
                         safe_speed = 0
                     else:
-                        safe_speed = self.__current_velocity
+                        safe_speed = 10.0  # Safe cruising speed
                     self.velocity_pub.publish(safe_speed)
 
             elif self.speed_limit is not None:
