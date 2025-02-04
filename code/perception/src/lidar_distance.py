@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from joblib import Parallel, delayed
+from perception_utils import array_to_clustered_points
 import rospy
 import ros_numpy
 import numpy as np
@@ -9,6 +10,7 @@ from sklearn.cluster import DBSCAN
 from cv_bridge import CvBridge
 from tf.transformations import quaternion_from_matrix
 from visualization_msgs.msg import Marker, MarkerArray
+from mapping.msg import ClusteredPointsArray
 
 # from mpl_toolkits.mplot3d import Axes3D
 # from itertools import combinations
@@ -85,6 +87,14 @@ class LidarDistance:
             queue_size=10,
         )
 
+        self.entity_lidar_publisher = rospy.Publisher(
+            rospy.get_param(
+                "~clustered_points_lidar_topic", "/paf/hero/Lidar/clustered_points"
+            ),
+            ClusteredPointsArray,
+            queue_size=10,
+        )
+
         # Subscriber for LiDAR data (point clouds)
         rospy.Subscriber(
             rospy.get_param("~source_topic", "/carla/hero/LIDAR"),
@@ -151,6 +161,20 @@ class LidarDistance:
 
         # Publish the MarkerArray for visualization
         self.marker_visualization_lidar_publisher.publish(marker_array)
+
+        header = rospy.Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = "hero/LIDAR"
+
+        clusterPointsNpArray = points_with_labels[:, :3]
+        indexArray = points_with_labels[:, -1]
+        valid_indices = indexArray != -1
+        clusterPointsNpArray = clusterPointsNpArray[valid_indices]
+        indexArray = indexArray[valid_indices]
+        clusteredpoints = array_to_clustered_points(
+            clusterPointsNpArray, indexArray, header_id="hero/LIDAR"
+        )
+        self.entity_lidar_publisher.publish(clusteredpoints)
 
         # Store valid cluster data for combining
         if clustered_points:

@@ -2,7 +2,7 @@
   <arg name="role_name" default="hero" />
   <arg name="control_loop_rate" default="0.05" />
   <arg name="view_camera" default="False" />
-  <arg name="camera_resolution" default="320" />
+  <arg name="camera_resolution" default="1280" />
 
 
 
@@ -19,7 +19,7 @@
     <param name="role_name" value="$(arg role_name)" />
   </node>
 
-  <node pkg="perception" type="position_heading_publisher_node.py" name="position_heading_publisher_node" output="screen">
+  <node pkg="perception" type="position_heading_publisher_node.py" name="position_heading_publisher_node" output="screen">    
     <param name="control_loop_rate" value="$(arg control_loop_rate)" />
     <param name="role_name" value="$(arg role_name)" />
     <param name="pos_filter" value="Kalman" />
@@ -50,7 +50,7 @@
       - yolo11l-seg
       -->
 
-    <param name="model" value="yolo11n-seg" />
+    <param name="model" value="yolo11m-seg" />
   </node>
 
   <node pkg="perception" type="traffic_light_node.py" name="TrafficLightNode" output="screen">
@@ -69,7 +69,7 @@
     <param name="range_topic" value="/carla/hero/LIDAR_range"/>
 
     <!-- Cluster configuration -->
-    <param name="clustering_radar_z_min" value="-1.4" />
+    <param name="clustering_lidar_z_min" value="-1.4" />
     <param name="dbscan_eps" value="0.4" />
     <param name="dbscan_min_samples" value="10" />
   </node>
@@ -83,6 +83,7 @@
     <param name="point_cloud_topic_1" value="/carla/hero/RADAR1"/>
     <param name="dbscan_eps" value="0.3"/>
     <param name="dbscan_samples" value="3"/>
+    <param name="clustered_points_radar_topic" value="/paf/hero/Radar/clustered_points"/>
     <param name="data_buffered" value="False"/>
     <param name="data_buffer_time" value="0.1"/>
     <param name="imu_debug" value="False"/>

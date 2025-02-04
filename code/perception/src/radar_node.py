@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from perception_utils import array_to_clustered_points
 import rospy
 import ros_numpy
 import numpy as np
@@ -18,6 +19,9 @@ import struct
 from collections import defaultdict
 from rosgraph_msgs.msg import Clock
 from ros_compatibility.node import CompatibleNode
+from mapping_common.entity import Motion2D
+from mapping_common.transform import Vector2
+from mapping.msg import ClusteredPointsArray
 
 import tf
 from collections import deque
@@ -307,6 +311,7 @@ class RadarNode(CompatibleNode):
         - None
             The function handles all outputs via ROS publishers and logs.
         """
+
         combined_points = []
         combined_points_filtered_out = []
 
@@ -315,9 +320,10 @@ class RadarNode(CompatibleNode):
             for sensor_name, messages in self.sensor_data_buffer.items():
                 for msg in messages:
                     points = self.extract_points(msg, sensor_name)
-                    break_filter_data, break_filter_out_data = self.filter_points(
-                        points
-                    )
+                    filter_result = self.filter_points(points)
+                    if filter_result is None:
+                        continue
+                    break_filter_data, break_filter_out_data = filter_result
                     if break_filter_data is not None:
                         combined_points.extend(break_filter_data)
                         combined_points_filtered_out.extend(break_filter_out_data)
@@ -327,9 +333,10 @@ class RadarNode(CompatibleNode):
             for sensor_name, msg in datasets.items():
                 if msg is not None:
                     points = self.extract_points(msg, sensor_name)
-                    break_filter_data, break_filter_out_data = self.filter_points(
-                        points
-                    )
+                    filter_result = self.filter_points(points)
+                    if filter_result is None:
+                        continue
+                    break_filter_data, break_filter_out_data = filter_result
                     if break_filter_data is not None:
                         combined_points.extend(break_filter_data)
                         combined_points_filtered_out.extend(break_filter_out_data)
@@ -367,6 +374,26 @@ class RadarNode(CompatibleNode):
             marker_array.markers.append(marker)
 
         self.marker_visualization_radar_publisher.publish(marker_array)
+
+        header = Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = "hero/RADAR"
+
+        clusterPointsNpArray = points_with_labels[:, :3]
+        indexArray = points_with_labels[:, -1]
+        valid_indices = indexArray != -1
+        clusterPointsNpArray = clusterPointsNpArray[valid_indices]
+        indexArray = indexArray[valid_indices]
+        motionArray = calculate_cluster_velocity(points_with_labels)
+        motionArray = motionArray[valid_indices]
+
+        motionArray = [m.to_ros_msg() for m in motionArray]
+
+        clusteredpoints = array_to_clustered_points(
+            clusterPointsNpArray, indexArray, motionArray, header_id="hero/RADAR"
+        )
+
+        self.entity_radar_publisher.publish(clusteredpoints)
 
         cluster_info = generate_cluster_info(
             clustered_data, combined_points, marker_array, bounding_boxes
@@ -431,6 +458,14 @@ class RadarNode(CompatibleNode):
             rospy.get_param("~marker_topic", "/paf/hero/Radar/Marker"),
             MarkerArray,
             queue_size=10,
+        )
+        self.entity_radar_publisher = rospy.Publisher(
+            rospy.get_param(
+                "~clustered_points_radar_topic", "/paf/hero/Radar/clustered_points"
+            ),
+            ClusteredPointsArray,
+            queue_size=10,
+            latch=True,
         )
         self.cluster_info_radar_publisher = rospy.Publisher(
             rospy.get_param("~clusterInfo_topic_topic", "/paf/hero/Radar/ClusterInfo"),
@@ -688,6 +723,34 @@ def create_pointcloud2(clustered_points, cluster_labels, filtered_out_points):
     return point_cloud2.create_cloud(header, fields, points)
 
 
+def create_pointcloud2Array(points_with_labels):
+    """Erstellt mehrere PointCloud2-Nachrichten basierend auf Labels."""
+    pointclouds = []
+    unique_labels = np.unique(points_with_labels[:, -1])  # Letzte Spalte für Labels
+
+    for label in unique_labels:
+        if label == -1:  # Ignoriere -1 (z. B. Rauschen oder unklassifizierte Punkte)
+            continue
+
+        # Filtere Punkte mit dem aktuellen Label
+        cluster_points = points_with_labels[points_with_labels[:, -1] == label]
+
+        # Extrahiere nur die relevanten Spalten (x, y, z, intensität)
+        cluster_data = cluster_points[:, :3]
+
+        # Erstelle PointCloud2 für diesen Cluster
+        fields = [
+            PointField("x", 0, PointField.FLOAT32, 1),
+            PointField("y", 4, PointField.FLOAT32, 1),
+            PointField("z", 8, PointField.FLOAT32, 1),
+        ]
+        cloud_data = [tuple(point) for point in cluster_data]
+        pc = point_cloud2.create_cloud(None, fields, cloud_data)
+        pointclouds.append(pc)
+
+    return pointclouds
+
+
 def transform_data_to_2d(clustered_data):
     """_summary_
 
@@ -856,6 +919,29 @@ def create_bounding_box_marker(label, bbox, bbox_type="aabb", bbox_lifetime=0.1)
         raise ValueError(f"Unsupported bbox_type: {bbox_type}")
 
     return marker
+
+
+def calculate_cluster_velocity(points_with_labels):
+    labels = points_with_labels[:, -1]
+    valid_mask = labels != -1  # Filter indvalid labels
+    valid_points = points_with_labels[valid_mask]
+
+    unique_labels = np.unique(valid_points[:, -1])
+
+    # calculate average velocity for each cluster
+    avg_velocities = {
+        label: np.mean(valid_points[valid_points[:, -1] == label, 3])
+        for label in unique_labels
+    }
+
+    # Assign the correct length to the velocity values
+    motion_array = np.full(len(points_with_labels), None, dtype=object)
+    motion_array[valid_mask] = [
+        Motion2D(Vector2.new(avg_velocities[label], 0.0), 0.0)
+        for label in labels[valid_mask]
+    ]
+
+    return motion_array
 
 
 # can be used for extra debugging

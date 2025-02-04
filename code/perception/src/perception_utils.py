@@ -23,22 +23,23 @@ def array_to_clustered_points(
         ClusteredPointsArray message
     """
     # Create the ClusteredPointsArray message
-    clustered_lidar_points = ClusteredPointsArray()
-    clustered_lidar_points.header.frame_id = header_id
-    clustered_lidar_points.header.stamp = rospy.Time.now()
+    clustered_points = ClusteredPointsArray()
+    clustered_points.header.frame_id = header_id
+    clustered_points.header.stamp = rospy.Time.now()
 
     # Flatten the points array into a single list of [x1, y1, z1, x2, y2, z2, ...]
-    clustered_lidar_points.clusterPointsArray = points.flatten()
+    clustered_points.clusterPointsArray = points.flatten().tolist()
 
     # Populate the indexArray
-    clustered_lidar_points.indexArray = point_indices
+    clustered_points.indexArray = point_indices.astype(int).tolist()
 
     # Populate the motionArray if object_speed_array is provided
     if object_speed_array is not None:
-        rospy.logerr("Motion2D is not implemented")
+        clustered_points.motionArray = object_speed_array
+        # rospy.logerr("Motion2D is not implemented")
 
     # Populate the object_class if object_class_array is provided
     if object_class_array is not None:
-        clustered_lidar_points.object_class = object_class_array
+        clustered_points.object_class = object_class_array
 
-    return clustered_lidar_points
+    return clustered_points

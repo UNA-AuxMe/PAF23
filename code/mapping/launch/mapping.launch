@@ -2,13 +2,11 @@
   <arg name="map_publish_rate" default="20" />
   <arg name="polygon_simplify_tolerance" default="0.1" />
 
-  <arg name="enable_radar_marker" default="True" />
-  <arg name="enable_lidar_marker" default="True" />
   <arg name="enable_radar_cluster" default="True" />
   <arg name="enable_lidar_cluster" default="True" />
+  <arg name="enable_vision_cluster" default="True" />
   <arg name="enable_raw_lidar_points" default="False" />
   <arg name="enable_lane_marker" default="True" />
-  <arg name="enable_vision_points" default="True" />
 
   <arg name="lidar_z_min" default="-1.5" />
   <arg name="lidar_z_max" default="1.0" />
@@ -22,18 +20,15 @@
   <arg name="min_merging_overlap_area" default="0.5" />
 
 
-  <node pkg="mapping" type="mapping_data_integration.py" name="mapping_data_integration"
-    output="screen">
+  <node pkg="mapping" type="mapping_data_integration.py" name="mapping_data_integration" output="screen">
     <param name="map_publish_rate" value="$(arg map_publish_rate)" />
     <param name="polygon_simplify_tolerance" value="$(arg polygon_simplify_tolerance)" />
 
-    <param name="enable_radar_marker" value="$(arg enable_radar_marker)" />
-    <param name="enable_lidar_marker" value="$(arg enable_lidar_marker)" />
     <param name="enable_radar_cluster" value="$(arg enable_radar_cluster)" />
     <param name="enable_lidar_cluster" value="$(arg enable_lidar_cluster)" />
+    <param name="enable_vision_cluster" value="$(arg enable_vision_cluster)" />
     <param name="enable_raw_lidar_points" value="$(arg enable_raw_lidar_points)" />
     <param name="enable_lane_marker" value="$(arg enable_lane_marker)" />
-    <param name="enable_vision_points" value="$(arg enable_vision_points)" />
 
     <!-- Raw Lidar entity configuration -->
     <param name="lidar_z_min" value="$(arg lidar_z_min)" />

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 from ros_compatibility.node import CompatibleNode
 import ros_compatibility as roscomp
 from sklearn.cluster import DBSCAN
@@ -8,7 +9,6 @@ import cv2
 from vision_node_helper import coco_to_carla, carla_colors
 from rospy.numpy_msg import numpy_msg
 from sensor_msgs.msg import Image as ImageMsg
-from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge
 from torchvision.utils import draw_segmentation_masks
 import numpy as np
@@ -49,7 +49,6 @@ class VisionNode(CompatibleNode):
         self.camera_resolution = self.get_param("camera_resolution")
 
         self.depth_images = []
-        self.dist_array = None
         self.lidar_array = None
 
         self.setup_subscriber()
@@ -66,7 +65,7 @@ class VisionNode(CompatibleNode):
 
         self.new_subscription(
             msg_type=numpy_msg(ImageMsg),
-            callback=self.handle_dist_array,
+            callback=self.handle_lidar_array,
             topic="/paf/hero/Center/dist_array",
             qos_profile=1,
         )
@@ -85,12 +84,6 @@ class VisionNode(CompatibleNode):
         self.publisher_center = self.new_publisher(
             msg_type=numpy_msg(ImageMsg),
             topic=f"/paf/{self.role_name}/Center/segmented_image",
-            qos_profile=1,
-        )
-
-        self.distance_publisher = self.new_publisher(
-            msg_type=Float32MultiArray,
-            topic=f"/paf/{self.role_name}/Center/object_distance",
             qos_profile=1,
         )
 
@@ -127,44 +120,40 @@ class VisionNode(CompatibleNode):
         Args:
             image (image msg): Image from camera scubscription
         """
-
-        # free up cuda memory
-        if self.device == "cuda":
-            torch.cuda.empty_cache()
-        vision_result = self.predict_ultralytics(
-            image, return_image=self.view_camera, image_size=self.camera_resolution
+        self.role_name = self.get_param("role_name", "hero")
+        self.view_camera = self.get_param("view_camera")
+        self.camera_resolution = self.get_param("camera_resolution")
+        prediction = self.predict_ultralytics(
+            image=image,
+            image_size=self.camera_resolution,
+            lidar_array=copy.deepcopy(self.lidar_array),
         )
 
-        if vision_result is None:
-            return
+        if self.view_camera and prediction is not None:
+            (cv_image, scaled_masks, carla_classes) = prediction
+            self.publish_image(cv_image, image.header, scaled_masks, carla_classes)
 
-        # publish vision result to rviz
-        img_msg = self.bridge.cv2_to_imgmsg(vision_result, encoding="bgr8")
-        img_msg.header = image.header
-        self.publisher_center.publish(img_msg)
-
-    def handle_dist_array(self, dist_array):
+    def handle_lidar_array(self, lidar_array):
         """
         This function overwrites the current lidar depth image from
         the lidar distance node with the latest depth image.
         The function also calculates the depth values of the lidar
 
         Args:
-            dist_array (image msg): Depth image frim Lidar Distance Node
+            lidar_array (image msg): Depth image frim Lidar Distance Node
         """
         # callback function for lidar depth image
         # since frequency is lower than image frequency
         # the latest lidar image is saved
         lidar_array = self.bridge.imgmsg_to_cv2(
-            img_msg=dist_array, desired_encoding="passthrough"
+            img_msg=lidar_array, desired_encoding="passthrough"
         )
-        lidar_array_copy = np.copy(lidar_array)
+        lidar_array_copy = copy.deepcopy(lidar_array)
         # add camera height to the z-axis
         lidar_array_copy[..., 2] += 1.7
         self.lidar_array = lidar_array_copy
-        self.dist_array = self.calculate_depth_values(lidar_array_copy)
 
-    def predict_ultralytics(self, image, return_image=True, image_size=640):
+    def predict_ultralytics(self, image, lidar_array, image_size=640):
         """
         This function takes in an image from a camera, predicts
         an ultralytics model on the image and looks for lidar points
@@ -179,41 +168,50 @@ class VisionNode(CompatibleNode):
         Returns:
             (cv image): visualization output for rvizw
         """
+        if lidar_array is None or lidar_array.size == 0:
+            rospy.logerr("No valid lidar data found")
+            return None
         scaled_masks = None
-        # preprocess image
         cv_image = self.bridge.imgmsg_to_cv2(
             img_msg=image, desired_encoding="passthrough"
         )
-        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-
-        # run model prediction
+        # image is with encoding bgr8 therefore we need to convert it to rgb
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
 
         output = self.model(
             cv_image, half=True, verbose=False, imgsz=image_size  # type: ignore
         )
-        if not (
-            hasattr(output[0], "masks")
-            and output[0].masks is not None
-            and hasattr(output[0], "boxes")
-            and output[0].boxes is not None
-            and self.dist_array is not None
-            and self.lidar_array is not None
+        if (
+            not hasattr(output[0], "masks")
+            or output[0].masks is None
+            or len(output[0].boxes) == 0
+            or not hasattr(output[0], "boxes")
+            or output[0].boxes is None
+            or len(output[0].boxes) == 0
         ):
             return None
+        box_classes = output[0].boxes.cls.int().cpu().numpy()
+        carla_classes = np.array(coco_to_carla)[box_classes]
+        masks = output[0].masks.data.clone().detach().cpu()
+        # check if the masks and box_classess size is correct
+        if masks.size(0) != len(box_classes):
+            rospy.logerr("Masks and box classes size mismatch")
+            return None
 
-        carla_classes = np.array(coco_to_carla)[
-            output[0].boxes.cls.to(torch.int).cpu().numpy()  # type: ignore
-        ]
+        # proceed with traffic light detection
+        if 9 in box_classes:
+            self.process_traffic_lights(output[0], cv_image, image.header)
 
-        masks = torch.tensor(output[0].masks.data)
         scaled_masks = scale_masks(
             masks.unsqueeze(1), cv_image.shape[:2], True
         ).squeeze(1)
+        # check if the scaled masks are valid
+        if scaled_masks is None or scaled_masks.size(0) == 0:
+            rospy.logerr("No scaled masks found")
+            return None
         valid_points, class_indices = self.process_segmentation_mask(
             scaled_masks.cpu().numpy(),
-            carla_classes=carla_classes,
-            distance_array=self.dist_array,
-            lidar_array=self.lidar_array,
+            lidar_array=lidar_array,
         )
         if valid_points is None or valid_points.size == 0:
             return None
@@ -222,41 +220,50 @@ class VisionNode(CompatibleNode):
         )
         if clustered_points is None or clustered_points.size == 0:
             return None
-        try:
-            self.publish_distance_output(clustered_points, carla_classes_indices)
-            clustered_lidar_points_msg = array_to_clustered_points(
-                clustered_points,
-                cluster_indices,
-                object_class_array=carla_classes_indices,
-            )
-            self.pointcloud_publisher.publish(clustered_lidar_points_msg)
-        except Exception as e:
-            rospy.logerr(f"Error in publishing pointcloud: {e}")
-            return None
-        # proceed with traffic light detection
-        if 9 in output[0].boxes.cls:
-            self.process_traffic_lights(output[0], cv_image, image.header)
+        # self.publish_distance_output(clustered_points, carla_classes_indices)
+        clustered_lidar_points_msg = array_to_clustered_points(
+            clustered_points,
+            cluster_indices,
+            object_class_array=carla_classes_indices,
+        )
+        self.pointcloud_publisher.publish(clustered_lidar_points_msg)
 
-        if return_image is False or scaled_masks is None:
-            return None
+        return cv_image, scaled_masks, carla_classes
 
-        transposed_image = np.transpose(cv_image, (2, 0, 1))
-        image_tensor = torch.tensor(transposed_image, dtype=torch.uint8)
-        masks_tensor = torch.tensor(scaled_masks > 0, dtype=torch.bool)
+    def publish_image(self, image, image_header, scaled_masks, carla_classes):
+        """
+        Publishes the image to the given publisher
 
+        Args:
+            image (cv image): image to be published
+            publisher (rospy publisher): publisher to publish the image
+        """
+        # Convert image to tensor and transpose dimensions
+        image_tensor = torch.from_numpy(image).permute(2, 0, 1).to(dtype=torch.uint8)
+
+        # Convert masks to boolean tensor
+        masks_tensor = scaled_masks.to(dtype=torch.bool)
+
+        # Get class colors
         class_colors = np.array(carla_colors)[carla_classes].tolist()
+
+        # Draw segmentation masks on the image
         drawn_images = draw_segmentation_masks(
             image_tensor, masks_tensor, alpha=0.6, colors=class_colors
         )
 
-        np_image = drawn_images.permute(1, 2, 0).cpu().numpy()
-        return cv2.cvtColor(np_image, cv2.COLOR_BGR2RGB)
+        # Convert the drawn image back to numpy array and BGR format
+        bgr_image = cv2.cvtColor(
+            drawn_images.permute(1, 2, 0).cpu().numpy(), cv2.COLOR_RGB2BGR
+        )
 
-    def process_segmentation_mask(
-        self, segmentation_array, carla_classes, distance_array, lidar_array
-    ):
+        # Publish vision result to RViz
+        img_msg = self.bridge.cv2_to_imgmsg(bgr_image, encoding="bgr8")
+        img_msg.header = image_header
+        self.publisher_center.publish(img_msg)
+
+    def process_segmentation_mask(self, segmentation_array, lidar_array):
         # Only process the segmentation mask if the distance array is not None
-        valid_distances_mask = distance_array > 0
         car_length = 4.9
         car_width = 1.86436
         # Filter out points that are not in the car and not on the road and are not zero
@@ -276,10 +283,9 @@ class VisionNode(CompatibleNode):
             & ~(lidar_array[..., 2] == 1.7)
         )
         lidar_filter_mask = ~car_filter_mask & road_filter_mask & zero_filter_mask
-        combined_mask = valid_distances_mask & lidar_filter_mask
         # tiled_mask holds all the valid points
         valid_points_from_mask = (
-            segmentation_array.astype(bool) & combined_mask[None, ...]
+            segmentation_array.astype(bool) & lidar_filter_mask[None, ...]
         )
         # get the x, y, z values of the valid points
         valid_indices = np.nonzero(valid_points_from_mask)
@@ -353,27 +359,7 @@ class VisionNode(CompatibleNode):
             carla_classes[valid_class_indices[selected_points_mask]],
         )
 
-    def publish_distance_output(self, points, carla_classes):
-        """
-        Publishes the distance output of the object detection
-        """
-        distance_output = np.column_stack(
-            (carla_classes, points[:, 0], points[:, 1])
-        ).ravel()
-
-        if distance_output.size > 0:
-            self.distance_publisher.publish(Float32MultiArray(data=distance_output))
-
-    def calculate_depth_values(self, dist_array):
-        """
-        Berechnet die Tiefenwerte basierend auf den Lidar-Daten
-        """
-        abs_distance = np.sqrt(
-            dist_array[..., 0] ** 2 + dist_array[..., 1] ** 2 + dist_array[..., 2] ** 2
-        )
-        return abs_distance
-
-    async def process_traffic_lights(self, prediction, cv_image, image_header):
+    def process_traffic_lights(self, prediction, cv_image, image_header):
         indices = (prediction.boxes.cls == 9).nonzero().squeeze().cpu().numpy()
         indices = np.asarray([indices]) if indices.size == 1 else indices
 

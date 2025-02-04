@@ -5,20 +5,24 @@ from ros_compatibility.node import CompatibleNode
 import ros_compatibility as roscomp
 import ros_numpy
 import rospy
-from visualization_msgs.msg import MarkerArray, Marker
+from visualization_msgs.msg import Marker
 import numpy as np
 from typing import List, Optional
 
 from mapping_common.entity import Entity, Flags, Car, Motion2D
 from mapping_common.transform import Transform2D, Vector2
-from mapping_common.shape import Circle, Rectangle
+from mapping_common.shape import Circle, Polygon, Rectangle
 from mapping_common.map import Map
 from mapping_common.filter import MapFilter, GrowthMergingFilter
-from mapping.msg import Map as MapMsg, ClusteredPointsArray
-
+from mapping.msg import Map as MapMsg
+from mapping.msg import ClusteredPointsArray
 from sensor_msgs.msg import PointCloud2
 from carla_msgs.msg import CarlaSpeedometer
-import sensor_msgs.point_cloud2 as pc2
+from shapely.geometry import MultiPoint
+import shapely
+
+
+# from shapely.validation import orient
 
 
 class MappingDataIntegrationNode(CompatibleNode):
@@ -33,10 +37,9 @@ class MappingDataIntegrationNode(CompatibleNode):
 
     lidar_data: Optional[PointCloud2] = None
     hero_speed: Optional[CarlaSpeedometer] = None
-    lidar_marker_data: Optional[MarkerArray] = None
-    lidar_cluster_entities_data: Optional[List[Entity]] = None
-    radar_cluster_entities_data: Optional[List[Entity]] = None
-    radar_marker_data: Optional[MarkerArray] = None
+    lidar_clustered_points_data: Optional[ClusteredPointsArray] = None
+    radar_clustered_points_data: Optional[ClusteredPointsArray] = None
+    vision_clustered_points_data: Optional[ClusteredPointsArray] = None
 
     def __init__(self, name, **kwargs):
         super().__init__(name, **kwargs)
@@ -63,34 +66,27 @@ class MappingDataIntegrationNode(CompatibleNode):
             qos_profile=1,
         )
         self.new_subscription(
-            topic=self.get_param("~marker_topic", "/paf/hero/Lidar/Marker"),
-            msg_type=MarkerArray,
-            callback=self.lidar_marker_callback,
-            qos_profile=1,
-        )
-        self.new_subscription(
-            topic=self.get_param("~entity_topic", "/paf/hero/Lidar/cluster_entities"),
-            msg_type=MapMsg,
-            callback=self.lidar_cluster_entities_callback,
-            qos_profile=1,
-        )
-        self.new_subscription(
-            topic=self.get_param("~entity_topic", "/paf/hero/Radar/cluster_entities"),
-            msg_type=MapMsg,
-            callback=self.radar_cluster_entities_callback,
-            qos_profile=1,
-        )
-        self.new_subscription(
-            topic="/paf/hero/visualization_pointcloud",
+            topic=self.get_param(
+                "~clustered_points_lidar_topic", "/paf/hero/Lidar/clustered_points"
+            ),
             msg_type=ClusteredPointsArray,
-            callback=self.radar_cluster_entities_callback,
+            callback=self.lidar_clustered_points_callback,
             qos_profile=1,
         )
-
         self.new_subscription(
-            topic=self.get_param("~marker_topic", "/paf/hero/Radar/Marker"),
-            msg_type=MarkerArray,
-            callback=self.radar_marker_callback,
+            topic=self.get_param(
+                "~clustered_points_vision_topic", "/paf/hero/visualization_pointcloud"
+            ),
+            msg_type=ClusteredPointsArray,
+            callback=self.vision_clustered_points_callback,
+            qos_profile=1,
+        )
+        self.new_subscription(
+            topic=self.get_param(
+                "~clustered_points_radar_topic", "/paf/hero/Radar/clustered_points"
+            ),
+            msg_type=ClusteredPointsArray,
+            callback=self.radar_clustered_points_callback,
             qos_profile=1,
         )
 
@@ -99,51 +95,29 @@ class MappingDataIntegrationNode(CompatibleNode):
             topic=self.get_param("~map_init_topic", "/paf/hero/mapping/init_data"),
             qos_profile=1,
         )
-        # Will be removed when the new function for entity creation is implemented
-        self.vision_node_pointcloud_publisher = self.new_publisher(
+
+        self.cluster_points_publisher = self.new_publisher(
             msg_type=PointCloud2,
-            topic="/paf/hero/mapping/temporary_pointcloud",
+            topic=self.get_param(
+                "~cluster_points_topic", "/paf/hero/mapping/clusterpoints"
+            ),
             qos_profile=1,
         )
+
         self.rate = self.get_param("~map_publish_rate", 20)
         self.new_timer(1.0 / self.rate, self.publish_new_map)
 
     def hero_speed_callback(self, data: CarlaSpeedometer):
         self.hero_speed = data
 
-    def lidar_marker_callback(self, data: MarkerArray):
-        self.lidar_marker_data = data
+    def lidar_clustered_points_callback(self, data: ClusteredPointsArray):
+        self.lidar_clustered_points_data = data
 
-    def lidar_cluster_entities_callback(self, data: MapMsg):
-        self.lidar_cluster_entities_data = data
+    def radar_clustered_points_callback(self, data: ClusteredPointsArray):
+        self.radar_clustered_points_data = data
 
-    def radar_cluster_entities_callback(self, data: ClusteredPointsArray):
-        if data is None or not hasattr(data, "clusterPointsArray"):
-            rospy.logwarn("No valid cluster data received.")
-            return
-
-        # Reshape the flattened clusterPointsArray into (N, 3) array
-        try:
-            points = np.array(data.clusterPointsArray).reshape(-1, 3)
-        except ValueError as e:
-            rospy.logerr(f"Error reshaping clusterPointsArray: {e}")
-            return
-
-        if points.shape[0] == 0:
-            rospy.logwarn("Received empty clusterPointsArray.")
-            return
-
-        # Extract the header from the message
-        header = data.header
-
-        # Convert points to a PointCloud2 message
-        merged_cloud = pc2.create_cloud_xyz32(header, points.tolist())
-
-        # Publish the PointCloud2 message
-        self.vision_node_pointcloud_publisher.publish(merged_cloud)
-
-    def radar_marker_callback(self, data: MarkerArray):
-        self.radar_marker_data = data
+    def vision_clustered_points_callback(self, data: ClusteredPointsArray):
+        self.vision_clustered_points_data = data
 
     def lidar_callback(self, data: PointCloud2):
         self.lidar_data = data
@@ -277,6 +251,102 @@ class MappingDataIntegrationNode(CompatibleNode):
 
         return lidar_entities
 
+    def create_entities_from_clusters(self, sensortype="") -> List[Entity]:
+        data = None
+        if sensortype == "radar":
+            data = self.radar_clustered_points_data
+            self.radar_clustered_points_data = None
+        elif sensortype == "lidar":
+            data = self.lidar_clustered_points_data
+            self.lidar_clustered_points_data = None
+        elif sensortype == "vision":
+            data = self.vision_clustered_points_data
+            self.vision_clustered_points_data = None
+        else:
+            raise ValueError(f"Unknown sensortype: {sensortype}")
+
+        if data is None:
+            return []
+
+        clusterpointsarray = np.array(data.clusterPointsArray).reshape(-1, 3)
+
+        indexarray = np.array(data.indexArray)
+
+        motion_array_converted = (
+            np.array([Motion2D.from_ros_msg(m) for m in data.motionArray])
+            if data.motionArray
+            else None
+        )
+
+        unique_labels = np.unique(indexarray)
+
+        entities = []
+        for label in unique_labels:
+            if label == -1:
+                # -1 noise or invalid cluster
+                rospy.logwarn("label -1")
+                continue
+
+            # Filter points for current cluster
+            cluster_mask = indexarray == label
+            cluster_points_xy = clusterpointsarray[cluster_mask, :2]
+
+            # Check if enough points for polygon are available
+            if cluster_points_xy.shape[0] < 3:
+                continue
+
+            if not np.array_equal(cluster_points_xy[0], cluster_points_xy[-1]):
+                # add startpoint to close polygon
+                cluster_points_xy = np.vstack([cluster_points_xy, cluster_points_xy[0]])
+
+            cluster_polygon = MultiPoint(cluster_points_xy)
+            cluster_polygon_hull = cluster_polygon.convex_hull
+            if cluster_polygon_hull.is_empty or not cluster_polygon_hull.is_valid:
+                rospy.loginfo("Empty hull")
+                continue
+            if not isinstance(cluster_polygon_hull, shapely.Polygon):
+                rospy.loginfo("Cluster is not polygon, continue")
+                continue
+
+            shape = Polygon.from_shapely(
+                cluster_polygon_hull, make_centered=True  # type: ignore
+            )
+
+            transform = shape.offset
+            shape.offset = Transform2D.identity()
+
+            motion = None
+            if motion_array_converted is not None:
+                motion = motion_array_converted[cluster_mask][0]
+                if self.hero_speed is not None:
+                    motion_vector_hero = Vector2.forward() * self.hero_speed.speed
+                    motion = Motion2D(
+                        motion.linear_motion - motion_vector_hero, angular_velocity=0.0
+                    )
+
+            # Optional: Füge die Objektklasse hinzu
+            # object_class = None
+            # if objectclassarray is not None:
+            #     cluster_class = objectclassarray[indexarray == label]
+            #     object_class = np.unique(cluster_class)[0]  # Nimm die häufigste
+            # Klasse
+
+            flags = Flags(is_collider=True)
+
+            # Erstelle die Entity
+            entity = Entity(
+                confidence=1,
+                priority=0.25,
+                shape=shape,
+                transform=transform,
+                timestamp=rospy.Time.now(),
+                flags=flags,
+                motion=motion,
+            )
+            entities.append(entity)
+
+        return entities
+
     def create_hero_entity(self) -> Optional[Car]:
         if self.hero_speed is None:
             return None
@@ -311,22 +381,19 @@ class MappingDataIntegrationNode(CompatibleNode):
         entities = []
         entities.append(hero_car)
 
-        if self.lidar_marker_data is not None and self.get_param(
-            "~enable_lidar_marker"
-        ):
-            entities.extend(self.entities_from_lidar_marker())
-        if self.radar_marker_data is not None and self.get_param(
-            "~enable_radar_marker"
-        ):
-            entities.extend(self.entities_from_radar_marker())
-        if self.lidar_cluster_entities_data is not None and self.get_param(
+        if self.lidar_clustered_points_data is not None and self.get_param(
             "~enable_lidar_cluster"
         ):
-            entities.extend(Map.from_ros_msg(self.lidar_cluster_entities_data).entities)
-        if self.radar_cluster_entities_data is not None and self.get_param(
+            entities.extend(self.create_entities_from_clusters(sensortype="lidar"))
+        if self.radar_clustered_points_data is not None and self.get_param(
             "~enable_radar_cluster"
         ):
-            entities.extend(Map.from_ros_msg(self.radar_cluster_entities_data).entities)
+            entities.extend(self.create_entities_from_clusters(sensortype="radar"))
+        if self.vision_clustered_points_data is not None and self.get_param(
+            "enable_vision_cluster"
+        ):
+            entities.extend(self.create_entities_from_clusters(sensortype="vision"))
+
         if self.lanemarkings is not None and self.get_param("~enable_lane_marker"):
             entities.extend(self.lanemarkings)
         if self.lidar_data is not None and self.get_param("~enable_raw_lidar_points"):
