@@ -205,8 +205,9 @@ class ACC(CompatibleNode):
         # Get next waypoint
         next_wp = self.__trajectory.poses[self.__current_wp_index + 1].pose.position
         # distances from agent to current and next waypoint
-        d_old = abs(agent.x - current_wp.x) + abs(agent.y - current_wp.y)
-        d_new = abs(agent.x - next_wp.x) + abs(agent.y - next_wp.y)
+        # NOTE: its possible that the "current" waypoint is behind the hero car ?
+        d_old = np.sqrt((agent.x - current_wp.x) ** 2 + (agent.y - current_wp.y) ** 2)
+        d_new = np.sqrt((agent.x - next_wp.x) ** 2 + (agent.y - next_wp.y) ** 2)
         if d_new < d_old:
             # If distance to next waypoint is smaller than to current
             # update current waypoint and corresponding speed limit

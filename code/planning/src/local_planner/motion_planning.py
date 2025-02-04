@@ -8,7 +8,7 @@ from typing import List
 import numpy as np
 import ros_compatibility as roscomp
 import rospy
-from carla_msgs.msg import CarlaSpeedometer
+from carla_msgs.msg import CarlaSpeedometer, CarlaEgoVehicleControl
 from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 from nav_msgs.msg import Path
 from perception.msg import LaneChange, Waypoint
@@ -92,6 +92,13 @@ class MotionPlanning(CompatibleNode):
             Float32,
             f"/paf/{self.role_name}/current_heading",
             self.__set_heading,
+            qos_profile=1,
+        )
+
+        self.steer_sub = self.new_subscription(
+            CarlaEgoVehicleControl,
+            f"/carla/{self.role_name}/vehicle_control_cmd",
+            self.__get_steer,
             qos_profile=1,
         )
 
@@ -184,6 +191,9 @@ class MotionPlanning(CompatibleNode):
 
         self.logdebug("MotionPlanning started")
         self.counter = 0
+
+    def __get_steer(self, data: CarlaEgoVehicleControl):
+        self.steer = data.steer
 
     def __set_unstuck_distance(self, data: Float32):
         """Set unstuck distance
@@ -409,18 +419,32 @@ class MotionPlanning(CompatibleNode):
 
         return filtered_list
 
-    def get_cornering_speed(self):
+    def get_cornering_speed(self) -> float:
+        """calculates the cornering speed
+
+        Returns:
+            float: the cornering speed in m/s
+        """
+        # assume wheelbase is 5 meters and slip factor is 0.1
+        wheelbase = 5
+        mu = 0.05
+        g = 9.81
+
+        if self.steer is not None:
+            try:
+                corner_radius = abs(wheelbase / math.tan(self.steer))
+            except ZeroDivisionError:  # if steer is 0
+                return self.__get_speed_cruise()
+
+            dynamics_based_speed = np.sqrt(mu * g * corner_radius)
+            self.loginfo(f"Dynamics based cornering speed: {dynamics_based_speed}")
+            return dynamics_based_speed
+
         corner = self.__corners[0]
         pos = self.current_pos[:2]
 
         def euclid_dist(vector1, vector2):
-            # TODO replace with numpy function
-            point1 = np.array(vector1)
-            point2 = np.array(vector2)
-
-            diff = point2 - point1
-            sum_sqrt = np.dot(diff.T, diff)
-            return np.sqrt(sum_sqrt)
+            return np.linalg.norm(np.array(vector1) - np.array(vector2))
 
         def map_corner(dist):
             if dist < 8:  # lane_change
@@ -430,7 +454,7 @@ class MotionPlanning(CompatibleNode):
             elif dist < 50:
                 return 7
             else:
-                8  # TODO add return
+                return 8
 
         distance_corner = 0
         for i in range(len(corner) - 1):
