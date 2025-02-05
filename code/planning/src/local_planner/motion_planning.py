@@ -8,6 +8,7 @@ from typing import List
 import numpy as np
 import ros_compatibility as roscomp
 import rospy
+from scipy.interpolate import splprep, splev
 from carla_msgs.msg import CarlaSpeedometer, CarlaEgoVehicleControl
 from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 from nav_msgs.msg import Path
@@ -425,12 +426,13 @@ class MotionPlanning(CompatibleNode):
         Returns:
             float: the cornering speed in m/s
         """
-        # assume wheelbase is 5 meters and slip factor is 0.1
+        # assume wheelbase is 5 meters
         wheelbase = 5
-        mu = 0.05
+        mu = 1  # TUNING PARAMETER
         g = 9.81
 
-        if self.steer is not None:
+        # Steering angle based radius calculation
+        if self.steer is not None and False:
             try:
                 corner_radius = abs(wheelbase / math.tan(self.steer))
             except ZeroDivisionError:  # if steer is 0
@@ -438,10 +440,44 @@ class MotionPlanning(CompatibleNode):
 
             dynamics_based_speed = np.sqrt(mu * g * corner_radius)
             self.loginfo(f"Dynamics based cornering speed: {dynamics_based_speed}")
-            return dynamics_based_speed
-
+            self.dynamics_based_speed = dynamics_based_speed
         corner = self.__corners[0]
         pos = self.current_pos[:2]
+
+        def distance_to_hero(x, y, hero_pos):
+            return np.linalg.norm(np.array([x, y]) - np.array(hero_pos))
+
+        if self.trajectory is not None and False:
+            coords = [
+                [poseStamped.pose.position.x, poseStamped.pose.position.y]
+                for poseStamped in self.trajectory.poses
+                if not distance_to_hero(
+                    poseStamped.pose.position.x, poseStamped.pose.position.y, pos
+                )
+                > 30
+            ]  # filter out points further away than 30 m
+            coords = np.array(coords)
+            tck, u = splprep([coords[:, 0], coords[:, 1]], s=0.01)
+
+            u_fine = np.linspace(0, 1, 10)
+
+            # calculate derivatives
+            dx, dy = splev(u_fine, tck, der=1)
+            ddx, ddy = splev(u_fine, tck, der=2)
+
+            # calculate curvature
+            curvature = abs((dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5)
+
+            if max(curvature < 0.001):
+                return self.__get_speed_cruise()
+
+            dynamics_based_speed = max(np.sqrt(mu * g * 1 / max(curvature)), 2)
+            self.loginfo(
+                f"CURVATURE: {max(curvature):.5f} -> speed: {dynamics_based_speed:.2f}"
+            )
+            self.dynamics_based_speed = min(
+                dynamics_based_speed, self.dynamics_based_speed
+            )
 
         def euclid_dist(vector1, vector2):
             return np.linalg.norm(np.array(vector1) - np.array(vector2))
@@ -469,13 +505,13 @@ class MotionPlanning(CompatibleNode):
                 self.loginfo("End Corner")
                 return self.__get_speed_cruise()
             else:
-                return map_corner(distance_corner)
+                return min(self.dynamics_based_speed, map_corner(distance_corner))
 
         distance_start = euclid_dist(pos, corner[0])
         if distance_start < 3:
             self.__in_corner = True
             self.loginfo("Start Corner")
-            return map_corner(distance_corner)
+            return min(self.dynamics_based_speed, map_corner(distance_corner))
         else:
             return self.__get_speed_cruise()
 
