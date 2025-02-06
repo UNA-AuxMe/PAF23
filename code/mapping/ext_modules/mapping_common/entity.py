@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
 
@@ -8,11 +8,11 @@ from uuid import UUID, uuid4
 from genpy.rostime import Time, Duration
 from std_msgs.msg import Header
 import uuid_msgs.msg as uuid_msgs
-from visualization_msgs.msg import Marker
+from visualization_msgs.msg import Marker, MarkerArray
 import rospy
 
-from mapping_common.shape import Shape2D
-from mapping_common.transform import Vector2, Transform2D
+from mapping_common.shape import Shape2D, MarkerStyle
+from mapping_common.transform import Vector2, Transform2D, Point2
 
 from mapping import msg
 
@@ -362,14 +362,68 @@ class Entity:
         """
         m = self.shape.to_marker(self.transform)
 
+        m.color.r = 1
+        m.color.g = 1
+        m.color.b = 1
         m.color.a = 0.5
-        m.color.r = 128
-        m.color.g = 128
-        m.color.b = 128
-
         m.pose.position.z = m.scale.z / 2.0
-
         return m
+
+    def get_meta_markers(self) -> List[Marker]:
+        """Creates additional meta markers for the entity
+
+        Returns:
+            List[Marker]: List of ROS marker messages
+        """
+        meta_markers = []
+        if self.motion is not None:
+            meta_markers.append(self.to_motion_marker())
+            speed_in_ms = self.motion.linear_motion.length()
+            speed_in_kmh = speed_in_ms * 3.6
+            motion_text = f"{speed_in_kmh:.2f} km/h"
+            meta_markers.append(self.get_text_marker(motion_text))
+        return meta_markers
+
+    def to_motion_marker(self) -> Marker:
+        assert self.motion is not None
+        m = Marker()
+        m.type = Marker.ARROW
+        m.action = Marker.ADD
+        m.lifetime = Duration.from_sec(2 / 20.0)
+        m.pose.position.x = self.transform.translation().x()
+        m.pose.position.y = self.transform.translation().y()
+        m.pose.position.z = 0.0
+        m.scale.x = 0.1
+        m.scale.y = 0.3
+        m.color.r = 1.0
+        m.color.g = 0.0
+        m.color.b = 0.0
+        m.color.a = 1.0
+        m.points.append(Point2.zero().to_ros_msg())
+        m.points.append(
+            (self.transform * self.motion.linear_motion)
+            .point()  # type: ignore
+            .to_ros_msg()
+        )
+        return m
+
+    def get_text_marker(self, text: str, offset: Optional[Vector2] = None) -> Marker:
+        if offset is None:
+            offset = Vector2.zero()
+        text_marker = Marker()
+        text_marker.type = Marker.TEXT_VIEW_FACING
+        text_marker.action = Marker.ADD
+        text_marker.lifetime = Duration.from_sec(2 / 20.0)
+        text_marker.pose.position.x = self.transform.translation().x() + offset.x()
+        text_marker.pose.position.y = self.transform.translation().y() + offset.y()
+        text_marker.pose.position.z = 1.5
+        text_marker.scale.z = 0.3
+        text_marker.color.r = 1.0
+        text_marker.color.g = 1.0
+        text_marker.color.b = 1.0
+        text_marker.color.a = 1.0
+        text_marker.text = text
+        return text_marker
 
     def to_shapely(self) -> "ShapelyEntity":
         return ShapelyEntity(self, self.shape.to_shapely(self.transform))
@@ -395,9 +449,67 @@ class Entity:
             # This limitation might be removed later if there are no rectangular
             # clusters used anymore that might falsely overlap with the hero.
             return False
+        if (
+            isinstance(self, Car)
+            and isinstance(other, Pedestrian)
+            or isinstance(self, Pedestrian)
+            and isinstance(other, Car)
+        ):
+            # Cars and pedestrians must get merged as a bicycle is detected
+            # as a car and a pedestrian at the same time.
+            return True
         if not (isinstance(self, type(other)) or isinstance(other, type(self))):
             return False
         return True
+
+    def get_global_x_velocity(self) -> Optional[float]:
+        """
+        Returns the global x velocity of the entity in in m/s.
+
+        Returns:
+        - Optional[float]: Velocity of the entity in front in m/s.
+        """
+
+        if self.motion is None:
+            return None
+
+        motion = self.motion.linear_motion
+        global_motion: Vector2 = self.transform * motion
+
+        velocity = global_motion.x()
+        return velocity
+
+    def get_delta_forward_velocity_of(self, other: "Entity") -> Optional[float]:
+        """Calculates the delta velocity compared to other in the heading of self
+
+        - result > 0: other moves away from self
+        - result < 0: other moves nearer to self
+
+        Args:
+            other (Entity)
+
+        Returns:
+            Optional[float]: Delta velocity if both entities have one.
+        """
+        if self.motion is None or other.motion is None:
+            return None
+
+        into_self_local = self.transform.inverse() * other.transform
+        other_motion_in_self_coords: Vector2 = (
+            into_self_local * other.motion.linear_motion
+        )
+        relative_motion = other_motion_in_self_coords - self.motion.linear_motion
+        return relative_motion.x()
+
+    def get_width(self) -> float:
+        """Returns the local width (y-bounds) of the entity
+
+        Returns:
+            float: width
+        """
+        local_poly = self.shape.to_shapely()
+        min_x, min_y, max_x, max_y = local_poly.bounds
+        return max_y - min_y
 
 
 @dataclass(init=False)
@@ -436,6 +548,14 @@ class Car(Entity):
         m.type_car = msg.TypeCar(
             brake_light=self.brake_light.value, indicator=self.indicator.value
         )
+        return m
+
+    def to_marker(self) -> Marker:
+        m = super().to_marker()
+        # [0, 0, 255],  # 10: Vehicles
+        m.color.r = 0
+        m.color.g = 0
+        m.color.b = 255 / 255
         return m
 
 
@@ -498,6 +618,11 @@ class Lanemarking(Entity):
 
         return m
 
+    def get_meta_markers(self) -> List[Marker]:
+        common_meta_markers = super().get_meta_markers()
+        common_meta_markers.append(self.get_text_marker(f"{self.position_index}"))
+        return common_meta_markers
+
 
 @dataclass(init=False)
 class TrafficLight(Entity):
@@ -537,6 +662,14 @@ class Pedestrian(Entity):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    def get_marker(self) -> Marker:
+        m = super().to_marker()
+        # [220, 20, 60],  # 4: Pedestrians
+        m.color.r = 220 / 255
+        m.color.g = 20 / 255
+        m.color.b = 60 / 255
+        return m
+
 
 _entity_supported_classes = [Entity, Car, Lanemarking, TrafficLight, Pedestrian]
 _entity_supported_classes_dict = {}
@@ -556,3 +689,84 @@ class ShapelyEntity:
 
     entity: Entity
     poly: shapely.Polygon
+
+    def get_distance_to(self, other: "ShapelyEntity") -> float:
+        """Returns the distance to other in m.
+
+        Args:
+            other (ShapelyEntity)
+
+        Returns:
+            float: distance
+        """
+
+        return shapely.distance(self.poly, other.poly)
+
+
+def shape_debug_marker_array(
+    namespace: str,
+    timestamp: Optional[rospy.Time] = None,
+    lifetime: Optional[rospy.Duration] = None,
+    entities: Optional[List[Tuple[Entity, Tuple[float, float, float, float]]]] = None,
+    shapes: Optional[List[Tuple[Shape2D, Tuple[float, float, float, float]]]] = None,
+    markers: Optional[List[Tuple[Marker, Tuple[float, float, float, float]]]] = None,
+) -> MarkerArray:
+    """Build a MarkerArray for debugging based on several mapping_common types
+
+    All inputs are a list of tuples:
+        - Each Tuple contains an object and a color
+        - The color is a Tuple of (r, g, b, a)
+
+    Args:
+        namespace (str): Namespace of the markers
+        timestamp (Optional[rospy.Time], optional): Timestamp of the markers.
+            Defaults to None.
+        lifetime (Optional[rospy.Duration], optional): Lifetime of the markers.
+            Defaults to rospy.Duration.from_sec(0.5).
+        entities (Optional[List[Tuple
+            [Entity, Tuple[float, float, float, float]]]], optional):
+            Entities to visualize. Defaults to None.
+        shapes (Optional[List[Tuple
+            [Shape2D, Tuple[float, float, float, float]]]], optional):
+            Shapes to visualize. Defaults to None.
+        markers (Optional[List[Tuple[
+            Marker, Tuple[float, float, float, float]]]], optional):
+            Markers to visualize . Defaults to None.
+
+    Returns:
+        MarkerArray: _description_
+    """
+    if lifetime is None:
+        lifetime = rospy.Duration.from_sec(0.5)
+    if entities is None:
+        entities = []
+    if shapes is None:
+        shapes = []
+    if markers is None:
+        markers = []
+    if timestamp is None:
+        timestamp = rospy.get_rostime()
+
+    for entity, color in entities:
+        marker = entity.to_marker()
+        markers.append((marker, color))
+    for shape, color in shapes:
+        marker = shape.to_marker(marker_style=MarkerStyle.LINESTRING)
+        markers.append((marker, color))
+    marker_array = MarkerArray(markers=[Marker(ns=namespace, action=Marker.DELETEALL)])
+    for id, marker_color in enumerate(markers):
+        marker, color = marker_color
+        marker.header.frame_id = "hero"
+        marker.header.stamp = timestamp
+        marker.ns = namespace
+        marker.id = id
+        marker.lifetime = lifetime
+        marker.scale.z = 0.3
+        r, g, b, a = color
+        marker.color.r = r
+        marker.color.g = g
+        marker.color.b = b
+        marker.color.a = a
+        marker_array.markers.append(marker)
+
+    return marker_array

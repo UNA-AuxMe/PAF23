@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   message_generation
+  dynamic_reconfigure
 )
 
 roslaunch_add_file_check(launch)
@@ -25,6 +26,10 @@ roslaunch_add_file_check(launch)
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
 catkin_python_setup()
+
+generate_dynamic_reconfigure_options(
+  config/ACC.cfg
+)
 
 ################################################
 ## Declare ROS messages, services and actions ##

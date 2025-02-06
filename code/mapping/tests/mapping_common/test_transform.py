@@ -1,6 +1,8 @@
 from mapping_common.transform import Transform2D, Vector2, Point2
 import math
 
+from test_shape import get_polygon
+
 
 def test_point_conversion():
     p = Point2.new(1.0, 25.0)
@@ -91,6 +93,19 @@ def test_rotation_translation_point():
     p_trans: Point2 = transf * p
     assert math.isclose(p_trans.x(), 1.0, abs_tol=1e-15)
     assert math.isclose(p_trans.y(), 3.0, abs_tol=1e-15)
+
+
+def test_shapely_transform():
+    shape = get_polygon()
+    shapely_poly = shape.to_shapely()
+    center = shapely_poly.centroid
+
+    transl_v = Vector2.new(1.0, 2.0)
+    transl = Transform2D.new_translation(transl_v)
+    transformed = transl * shapely_poly
+    t_center = transformed.centroid
+
+    assert center.x + 1.0 == t_center.x and center.y + 2.0 == t_center.y
 
 
 def test_normalize():

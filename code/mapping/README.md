@@ -34,7 +34,8 @@ flowchart TD
     NF{New empty dataframe} --> A[node: mapping_data_integration]
     S{Sensors} --> A
     A --> F1(filter: GrowthMergingFilter)
-    F1 -->|topic: /paf/hero/mapping/init_data| 1[node: mapping_visualization]
+    F1 --> F2(filter: LaneIndexFilter)
+    F2 -->|topic: /paf/hero/mapping/init_data| 1[node: mapping_visualization]
 ```
 
 This information is kept up-to-date with the package

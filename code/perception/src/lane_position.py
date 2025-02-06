@@ -236,7 +236,7 @@ class lane_position(CompatibleNode):
         else:
             line_length = abs(x / np.cos(angle)) * 2
             length = max(line_length, self.line_length)
-        return length
+        return length + 1
 
     def calc_position_indices(self, points):
         """gives each lanemarking a unique index, where 1 is the lane next to the car

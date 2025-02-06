@@ -9,13 +9,14 @@ from visualization_msgs.msg import Marker
 import numpy as np
 from typing import List, Optional
 
-from mapping_common.entity import Entity, Flags, Car, Motion2D
+from mapping_common.entity import Entity, Flags, Car, Motion2D, Pedestrian
 from mapping_common.transform import Transform2D, Vector2
 from mapping_common.shape import Circle, Polygon, Rectangle
 from mapping_common.map import Map
-from mapping_common.filter import MapFilter, GrowthMergingFilter
-from mapping.msg import Map as MapMsg
-from mapping.msg import ClusteredPointsArray
+
+from mapping_common.filter import MapFilter, GrowthMergingFilter, LaneIndexFilter
+from mapping.msg import Map as MapMsg, ClusteredPointsArray
+
 from sensor_msgs.msg import PointCloud2
 from carla_msgs.msg import CarlaSpeedometer
 from shapely.geometry import MultiPoint
@@ -278,6 +279,8 @@ class MappingDataIntegrationNode(CompatibleNode):
             else None
         )
 
+        objectclassarray = np.array(data.object_class) if data.object_class else None
+
         unique_labels = np.unique(indexarray)
 
         entities = []
@@ -321,28 +324,45 @@ class MappingDataIntegrationNode(CompatibleNode):
                 if self.hero_speed is not None:
                     motion_vector_hero = Vector2.forward() * self.hero_speed.speed
                     motion = Motion2D(
-                        motion.linear_motion - motion_vector_hero, angular_velocity=0.0
+                        motion_vector_hero + motion.linear_motion, angular_velocity=0.0
                     )
 
             # Optional: Füge die Objektklasse hinzu
-            # object_class = None
-            # if objectclassarray is not None:
-            #     cluster_class = objectclassarray[indexarray == label]
-            #     object_class = np.unique(cluster_class)[0]  # Nimm die häufigste
-            # Klasse
+            object_class = None
+            if objectclassarray is not None:
+                object_class = objectclassarray[indexarray == label][0]
 
             flags = Flags(is_collider=True)
-
-            # Erstelle die Entity
-            entity = Entity(
-                confidence=1,
-                priority=0.25,
-                shape=shape,
-                transform=transform,
-                timestamp=rospy.Time.now(),
-                flags=flags,
-                motion=motion,
-            )
+            if object_class == 4:
+                entity = Pedestrian(
+                    confidence=1,
+                    priority=0.9,
+                    shape=shape,
+                    transform=transform,
+                    timestamp=rospy.Time.now(),
+                    flags=flags,
+                    motion=motion,
+                )
+            elif object_class == 10:
+                entity = Car(
+                    confidence=1,
+                    priority=0.75,
+                    shape=shape,
+                    transform=transform,
+                    timestamp=rospy.Time.now(),
+                    flags=flags,
+                    motion=motion,
+                )
+            else:
+                entity = Entity(
+                    confidence=1,
+                    priority=0.25,
+                    shape=shape,
+                    transform=transform,
+                    timestamp=rospy.Time.now(),
+                    flags=flags,
+                    motion=motion,
+                )
             entities.append(entity)
 
         return entities
@@ -444,6 +464,8 @@ class MappingDataIntegrationNode(CompatibleNode):
                     simplify_tolerance=self.get_param("~polygon_simplify_tolerance"),
                 )
             )
+        if self.get_param("~enable_lane_index_filter"):
+            map_filters.append(LaneIndexFilter())
 
         return map_filters
 

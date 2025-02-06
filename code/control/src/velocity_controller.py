@@ -128,7 +128,7 @@ class VelocityController(CompatibleNode):
                     throttle = 0
 
             # very low target_velocities -> stand
-            elif target_velocity < 1:
+            elif target_velocity < 0.1:
                 reverse = False
                 brake = 1
                 throttle = 0

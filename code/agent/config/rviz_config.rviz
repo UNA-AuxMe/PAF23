@@ -4,8 +4,8 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /MarkerArray1
-        - /PointCloud21
+        - /Intermediate Visualization1
+        - /ACC Debug1
       Splitter Ratio: 0.5
     Tree Height: 325
   - Class: rviz/Selection
@@ -62,13 +62,12 @@ Visualization Manager:
       Unreliable: false
       Value: true
       Visibility:
+        ACC Debug: true
         Grid: false
         Imu: false
+        Intermediate Visualization: true
         Lidar: false
-        Lidar_filtered: false
-        MarkerArray: true
         Path: false
-        PointCloud2: true
         Radar: true
         Value: true
         VisonNode Output: true
@@ -107,7 +106,7 @@ Visualization Manager:
       Color: 150; 150; 150
       Color Transformer: Intensity
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 0; 0; 0
@@ -122,7 +121,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -175,69 +174,21 @@ Visualization Manager:
       Topic: /paf/hero/trajectory
       Unreliable: false
       Value: true
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
-      Axis: Z
-      Channel Name: intensity
-      Class: rviz/PointCloud2
-      Color: 255; 255; 255
-      Color Transformer: ""
-      Decay Time: 0
-      Enabled: true
-      Invert Rainbow: false
-      Max Color: 255; 255; 255
-      Min Color: 0; 0; 0
-      Name: Lidar_filtered
-      Position Transformer: XYZ
-      Queue Size: 10
-      Selectable: true
-      Size (Pixels): 3
-      Size (m): 0.20000000298023224
-      Style: Flat Squares
-      Topic: /carla/hero/LIDAR_filtered
-      Unreliable: false
-      Use Fixed Frame: true
-      Use rainbow: true
-      Value: true
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /paf/hero/mapping/marker_array
-      Name: MarkerArray
+      Name: Intermediate Visualization
       Namespaces:
-        m: true
+        map: true
       Queue Size: 100
       Value: true
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
-      Axis: Z
-      Channel Name: intensity
-      Class: rviz/PointCloud2
-      Color: 255; 255; 255
-      Color Transformer: ""
-      Decay Time: 0
+    - Class: rviz/MarkerArray
       Enabled: true
-      Invert Rainbow: false
-      Max Color: 255; 255; 255
-      Min Color: 0; 0; 0
-      Name: PointCloud2
-      Position Transformer: ""
-      Queue Size: 10
-      Selectable: true
-      Size (Pixels): 3
-      Size (m): 0.05000000074505806
-      Style: Flat Squares
-      Topic: /paf/hero/mapping/temporary_pointcloud
-      Unreliable: false
-      Use Fixed Frame: true
-      Use rainbow: true
+      Marker Topic: /paf/hero/acc/debug_markers
+      Name: ACC Debug
+      Namespaces:
+        acc: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -266,8 +217,8 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz/Orbit
-      Distance: 22.39063835144043
+      Class: rviz/ThirdPersonFollower
+      Distance: 41.37434005737305
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -275,17 +226,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0
-        Y: 0
+        X: -1.4864118099212646
+        Y: 0.8984503149986267
         Z: 0
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.439797043800354
+      Pitch: 0.8553982973098755
       Target Frame: <Fixed Frame>
-      Yaw: 3.0523226261138916
+      Yaw: 3.135399580001831
     Saved: ~
 Window Geometry:
   Camera:

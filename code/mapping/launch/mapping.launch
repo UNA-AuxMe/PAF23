@@ -15,15 +15,15 @@
   <arg name="lidar_discard_probability" default="0.9" />
 
   <arg name="enable_merge_filter" default="True" />
-  <arg name="merge_growth_distance" default="0.3" />
+  <arg name="merge_growth_distance" default="0.65" />
   <arg name="min_merging_overlap_percent" default="0.5" />
-  <arg name="min_merging_overlap_area" default="0.5" />
-
+  <arg name="min_merging_overlap_area" default="1.0" />
+  
+  <arg name="enable_lane_index_filter" default="True" />
 
   <node pkg="mapping" type="mapping_data_integration.py" name="mapping_data_integration" output="screen">
     <param name="map_publish_rate" value="$(arg map_publish_rate)" />
     <param name="polygon_simplify_tolerance" value="$(arg polygon_simplify_tolerance)" />
-
     <param name="enable_radar_cluster" value="$(arg enable_radar_cluster)" />
     <param name="enable_lidar_cluster" value="$(arg enable_lidar_cluster)" />
     <param name="enable_vision_cluster" value="$(arg enable_vision_cluster)" />
@@ -42,6 +42,7 @@
     <param name="merge_growth_distance" value="$(arg merge_growth_distance)" />
     <param name="min_merging_overlap_percent" value="$(arg min_merging_overlap_percent)" />
     <param name="min_merging_overlap_area" value="$(arg min_merging_overlap_area)" />
+    <param name="enable_lane_index_filter" value="$(arg enable_lane_index_filter)" />
   </node>
 
 </launch>

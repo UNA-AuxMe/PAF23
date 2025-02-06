@@ -10,7 +10,6 @@ from mapping.msg import Map as MapMsg
 from rospy import Publisher
 from rospy import Duration
 
-from mapping_common.entity import Entity
 from mapping_common.map import Map
 
 MARKER_NAMESPACE: str = "map"
@@ -34,6 +33,7 @@ class Visualization(CompatibleNode):
         self.filter_is_stopmark = False
         self.filter_is_lanemark = False
         self.filter_is_ignored = False
+        self.show_meta_markers = True
 
         self.new_service(SetBool, "vis/set_is_collider", self.set_is_collider_filter)
         self.new_service(SetBool, "vis/set_is_tracked", self.set_is_tracked_filter)
@@ -54,11 +54,21 @@ class Visualization(CompatibleNode):
         marker_array.markers.append(self.create_deleteall_marker())
 
         marker_timestamp = roscomp.ros_timestamp(self.get_time(), from_sec=True)
-        for id, entity in enumerate(map.entities):
+        markers = []
+        for entity in map.entities:
             # TODO: filtering based on flags
-            marker_array.markers.append(
-                self.create_marker_from_entity(id, entity, marker_timestamp)
-            )
+            markers.append(entity.to_marker())
+            if not self.show_meta_markers:
+                continue
+            markers.extend(entity.get_meta_markers())
+
+        for id, marker in enumerate(markers):
+            marker.header.stamp = marker_timestamp
+            marker.header.frame_id = "hero"
+            marker.ns = MARKER_NAMESPACE
+            marker.id = id + 1000
+            marker.lifetime = Duration.from_sec(2 / 20.0)
+            marker_array.markers.append(marker)
 
         self.marker_publisher.publish(marker_array)
 
@@ -69,16 +79,6 @@ class Visualization(CompatibleNode):
         before the new ones are displayed.
         """
         return Marker(ns=MARKER_NAMESPACE, action=Marker.DELETEALL)
-
-    def create_marker_from_entity(self, id, entity: Entity, timestamp) -> Marker:
-        marker = entity.to_marker()
-        marker.header.frame_id = "hero"
-        marker.header.stamp = timestamp
-        marker.ns = MARKER_NAMESPACE
-        marker.id = id
-        marker.lifetime = Duration.from_sec(2.0 / 20.0)
-
-        return marker
 
     def set_is_collider_filter(self, request: SetBoolRequest):
         self.filter_is_collider = request.data

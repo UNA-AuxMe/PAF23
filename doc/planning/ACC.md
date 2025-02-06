@@ -6,6 +6,7 @@
   - [Published Topics](#published-topics)
   - [Subscribed Topics](#subscribed-topics)
 - [Node Creation + Running Tests](#node-creation--running-tests)
+- [Functionality](#functionality)
 
 ## ROS Data Interface
 
@@ -16,19 +17,20 @@ This module publishes the following topics:
 - `/paf/hero/acc_velocity`: The desired speed for the vehicle.
 - `/paf/hero/current_wp`: The current waypoint.
 - `/paf/hero/speed_limit`: The current speed limit.
+- `/paf/hero/acc/debug_markers`: Markers that show debugging data e.g. which vehicle is recognized as leading vehicle.
 
 ### Subscribed Topics
 
 This module subscribes to the following topics:
 
+- `/paf/hero/mapping/init_data`: The map published by the intermediate layer.
 - `/paf/hero/unstuck_flag`: A flag indicating whether the vehicle is stuck.
 - `/paf/hero/unstuck_distance`: The distance the vehicle needs to travel to get unstuck.
-- `/carla/hero/Speed`: The current speed of the vehicle.
 - `/paf/hero/speed_limits_OpenDrive`: The speed limits from OpenDrive.
-- `/paf/hero/trajectory_global`: The global trajectory of the vehicle.
+- `/paf/hero/trajectory_global`: The global trajectory of the vehicle (without overtakes etc).
+- `/paf/hero/trajectory`: The trajectory of the vehicle including overtakes etc.
 - `/paf/hero/current_pos`: The current position of the vehicle.
-- `/paf/hero/collision`: Information about a possible collision object.
-- `/paf/hero/Radar/lead_vehicle/range_velocity_array`: Distance to the vehicle in front, relative speed of the vehicle in front
+- `/paf/hero/current_heading`: The current heading of the vehicle.
 
 ## Node Creation + Running Tests
 
@@ -40,3 +42,13 @@ To run this node insert the following statement in the [planning.launch](../../c
     <param name="control_loop_rate" value="0.3" />
 </node>
 ```
+
+## Functionality
+
+Each time the map from the intermediate layer is received, the ACC triggers the function `update_velocity` where the main logic of the ACC can be found. The most important steps are:
+
+- Definition of a trajectory mask and a rectangle in front of the car that is used to set the area in which a leading vehicle is searched. The rectangle is able to detect possible collisions that are close to the car while the trajectory mask checks the area at a higher distance from the car.
+- Calculation of the leading vehicle based on the trajectory mask and the rectangle.
+- Calculation of the desired speed using the function `calculate_velocity_based_on_lead`.
+- Publishing of the markers to visualize the masks and the chosen leading vehicle.
+  

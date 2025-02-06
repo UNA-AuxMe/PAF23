@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation
 from behaviors import behavior_speed as bs
 from local_planner.utils import NUM_WAYPOINTS, TARGET_DISTANCE_TO_STOP, convert_to_ms
 from mapping_common.map import Map
+import mapping_common.map
 
 """
 Source: https://github.com/ll7/psaf2
@@ -208,16 +209,18 @@ class Approach(py_trees.behaviour.Behaviour):
         # Intermediate layer map integration
         map_data = self.blackboard.get("/paf/hero/mapping/init_data")
         map = Map.from_ros_msg(map_data)
+        tree = map.build_tree(mapping_common.map.lane_free_filter())
 
-        entity = map.get_entity_in_front_or_back(True)
+        entity = tree.get_entity_in_front_or_back(True)
 
-        left_free = map.is_lane_free(right_lane=False)
+        left_free = tree.is_lane_free(right_lane=False)
         rospy.loginfo(f"OT: Left lane free: {left_free}")
 
         if entity is not None:
             rospy.loginfo(
-                f"Translation to car in front: {entity.transform.translation().x()},"
-                f"{entity.transform.translation().y()}"
+                f"Translation to car in front:"
+                f"{entity.entity.transform.translation().x()},"
+                f"{entity.entity.transform.translation().y()}"
             )
         if _dis is not None:
             self.ot_distance = _dis.data[0]

@@ -47,6 +47,11 @@ class Point2(_Coord2):
     def vector(self) -> "Vector2":
         return Vector2(self._matrix)
 
+    def vector_to(self, other: "Point2") -> "Vector2":
+        start = self.vector()
+        end = other.vector()
+        return end - start
+
     @staticmethod
     def new(x: float, y: float) -> "Point2":
         m = np.array([x, y, 1.0], dtype=np.float64)
@@ -116,7 +121,7 @@ class Vector2(_Coord2):
         zero = Vector2.zero()
         if self == zero:
             return zero
-        return Vector2(self._matrix / self.length())
+        return self / self.length()
 
     def angle_to(self, other: "Vector2") -> float:
         """Calculates the angle to *other*
@@ -195,6 +200,15 @@ class Vector2(_Coord2):
             return self.__mul__(other)
         raise TypeError(
             f"Unsupported operand types for *: '{type(self)}' and '{type(other)}'"
+        )
+
+    def __truediv__(self, other):
+        if isinstance(other, (float, int)):
+            matrix = self._matrix / other
+            matrix[2] = 1.0
+            return Vector2(matrix)
+        raise TypeError(
+            f"Unsupported operand types for /: '{type(self)}' and '{type(other)}'"
         )
 
     def __add__(self, other):
@@ -360,6 +374,29 @@ class Transform2D:
             m = np.matmul(matrix, other._matrix)
             m = m / m[2]
             return Vector2(m)
+        if isinstance(other, shapely.Geometry):
+
+            def transform_shapely_point(
+                points: npt.NDArray[np.float64],
+            ) -> npt.NDArray[np.float64]:
+                assert (
+                    len(points.shape) == 2 and points.shape[1] == 2
+                ), "Coords must be 2 dimensional"
+                num_points = points.shape[0]
+                ones = np.ones(shape=(num_points, 1), dtype=np.float64)
+                points_homo = np.concatenate(
+                    (points, ones),
+                    axis=1,
+                )
+                points_homo = points_homo[:, None, :]
+                points_homo = np.transpose(points_homo, axes=(0, 2, 1))
+                transformed = np.matmul(self._matrix, points_homo)
+                transformed = np.transpose(transformed, axes=(0, 2, 1))
+                transformed = np.squeeze(transformed, 1)
+                transformed = transformed / transformed[:, 2, None]
+                return transformed[:, :2]
+
+            return shapely.transform(other, transformation=transform_shapely_point)
         raise TypeError(
             f"Unsupported operand types for *: '{type(self)}' and '{type(other)}'"
         )

@@ -285,6 +285,8 @@ class MotionPlanning(CompatibleNode):
             None: The method updates the self.trajectory attribute with the new path.
         """
         currentwp = self.current_wp
+        if currentwp is None:
+            return
         normal_x_offset = 2
         unstuck_x_offset = 3  # could need adjustment with better steering
         if unstuck:

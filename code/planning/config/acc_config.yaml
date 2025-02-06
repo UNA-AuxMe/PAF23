@@ -1,0 +1,8 @@
+sg_Ki: 1.5
+sg_T_gap: 1.9
+sg_d_min: 3
+
+ct_Kp: 0.0
+ct_Ki: 1.2
+ct_T_gap: 1.9
+ct_d_min: 0.6

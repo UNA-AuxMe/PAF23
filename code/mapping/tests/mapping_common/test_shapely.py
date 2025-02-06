@@ -1,5 +1,9 @@
 from typing import List
+import shapely
+import math
 
+import mapping_common.map
+import mapping_common.mask
 from mapping_common import shape, entity
 from mapping_common.map import Map
 from mapping_common.transform import Transform2D, Vector2
@@ -76,8 +80,11 @@ def get_test_entities() -> List[entity.Entity]:
         style=entity.Lanemarking.Style.SOLID,
         confidence=1.0,
         priority=1.0,
+        position_index=1,
+        predicted=False,
         shape=shape.Rectangle(4.0, 0.2),
         transform=Transform2D.identity(),
+        flags=entity.Flags(is_lanemark=True),
         flags=entity.Flags(is_lanemark=True),
     )
     entities.append(lane)
@@ -138,3 +145,27 @@ def test_map_tree_query_self():
     assert len(query) == 1
     assert query[0][0].entity == entities[0]
     assert query[0][1].entity == entities[3]
+
+
+def test_line_split_0():
+    line = shapely.LineString([[0, 0], [1, 1]])
+    before, after = mapping_common.mask.split_line_at(line, 0.5)
+
+    assert math.isclose(shapely.length(before), 0.5)
+    assert after is not None
+
+
+def test_line_split_1():
+    line = shapely.LineString([[0, 0], [0, 1]])
+    before, after = mapping_common.mask.split_line_at(line, 1.0)
+
+    assert math.isclose(shapely.length(before), 1.0)
+    assert after is None
+
+
+def test_line_split_2():
+    line = shapely.LineString([[0, 0], [0, 1]])
+    before, after = mapping_common.mask.split_line_at(line, 0.0)
+
+    assert math.isclose(shapely.length(after), 1.0)
+    assert before is None

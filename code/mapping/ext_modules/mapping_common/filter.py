@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import List, Tuple, Optional, Callable
 from uuid import UUID
 
+import rospy
 import shapely
 
 from .map import Map
@@ -27,6 +28,57 @@ class MapFilter:
                 Note that unmodified entities are NOT deepcopied.
         """
         raise NotImplementedError
+
+
+@dataclass
+class LaneIndexFilter(MapFilter):
+    """Updates the Index of lanemark Entities if duplicates have been removed.
+
+    !!!Must be called after GrowthMergingFilter!!!
+
+    - Calculates the y coordinates of the intersection with y axis of each lanemarking.
+    - Gives position_index according to y position:
+        - 1 = lane next to the car on the left.
+        - 2 = second lanemark on the left.
+        - -1 = lane next to the car on the right.
+        - etc.
+
+    Then returns the updated map with all Entities
+    """
+
+    def filter(self, map):
+        try:
+            lanemark_f = FlagFilter(is_lanemark=True)
+            other_f = FlagFilter(is_lanemark=False)
+            lanemarkings = map.filtered(lanemark_f)
+            other_entities = map.filtered(other_f)
+
+            intersections = map.get_lane_y_axis_intersections(direction="both")
+            y_values = [(uuid, intersections[uuid][1]) for uuid in intersections]
+            # separate negative and positive values
+            positive_y = sorted(
+                [(uuid, y) for uuid, y in y_values if y > 0], key=lambda x: x[1]
+            )
+            negative_y = sorted(
+                [(uuid, y) for uuid, y in y_values if y < 0], key=lambda x: abs(x[1])
+            )
+            # creates a dictionary for the labels with uuid as keys
+            labels = {}
+            for i, (uuid, _) in enumerate(positive_y):
+                labels[uuid] = i + 1  # starts at 1
+            for i, (uuid, _) in enumerate(negative_y):
+                labels[uuid] = -(i + 1)  # starts at
+            # iterate through all Lanemark Entities and give it new position index
+            for lanemarking in lanemarkings:
+                lanemarking.position_index = labels.get(lanemarking.uuid, 0)
+
+            # insert all updated Lanemarks and non_lanemarking Entities
+            updated_map = Map(map.timestamp, other_entities + lanemarkings)
+
+            return updated_map
+        except Exception as e:
+            rospy.logwarn(f"Error in LaneIndexFilter: {e}")
+            return map  # Return original map on error
 
 
 @dataclass
@@ -165,10 +217,12 @@ def _try_merge_pair(
     else:
         base_entity_idx = 1
         merge_entity_idx = 0
-    base_entity: Entity = pair[base_entity_idx].entity
-    merge_entity: Entity = pair[merge_entity_idx].entity
+
+    base_entity = pair[base_entity_idx].entity
+    merge_entity = pair[merge_entity_idx].entity
 
     modified = deepcopy(base_entity)
+
     modified.transform = transform
     modified.shape = shape
 
@@ -232,22 +286,28 @@ def _grow_merge_pair(
 
     growns: List[shapely.Polygon] = growns_maybe_none
 
-    areas = [e.area for e in growns]
-
-    intersection = shapely.intersection(growns[0], growns[1])
-    if intersection.is_empty:
+    # Intersection of both grown shapes. Used for area check
+    grown_intersection = shapely.intersection(growns[0], growns[1])
+    if grown_intersection.is_empty:
         return None
-    if not isinstance(intersection, shapely.Polygon):
+    if not isinstance(grown_intersection, shapely.Polygon):
         return None
-    i_area = intersection.area
-    area_overlaps = [i_area / a for a in areas]
-    # the bigger the area_fract, the more of a shape lies
+    # Intersection of one grown and one original shape. Used for percentage check
+    g_o_intersections = [
+        shapely.intersection(growns[0], pair[1].poly),
+        shapely.intersection(growns[1], pair[0].poly),
+    ]
+    percentage_overlaps = [
+        g_o_intersections[0].area / pair[1].poly.area,
+        g_o_intersections[1].area / pair[0].poly.area,
+    ]
+    # the bigger the percentage_overlaps, the more of a shape lies
     # within the intersecting area.
     # Entities are only merged, if one of them at least
     # overlaps the other by min_merging_overlap.
     if (
-        max(area_overlaps) < min_merging_overlap_percent
-        and intersection.area < min_merging_overlap_area
+        max(percentage_overlaps) < min_merging_overlap_percent
+        and grown_intersection.area < min_merging_overlap_area
     ):
         return None
 
