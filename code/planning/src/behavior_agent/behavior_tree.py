@@ -74,8 +74,13 @@ def grow_a_tree(role_name):
                                     ),
                                 ],
                             ),
+                        ],
+                    ),
+                    Selector(
+                        "Overtaking",
+                        children=[
                             Sequence(
-                                "Overtaking",
+                                "Overtake",
                                 children=[
                                     overtake.Ahead("Overtake Ahead?"),
                                     Sequence(

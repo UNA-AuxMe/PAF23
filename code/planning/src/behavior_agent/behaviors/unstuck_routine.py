@@ -154,7 +154,13 @@ class UnstuckRoutine(py_trees.behaviour.Behaviour):
                 # reset stuck timer
                 self.stuck_timer = rospy.Time.now()
 
-        wait_behaviors = [bs.int_wait.name, bs.lc_wait.name, bs.ot_wait_stopped]
+        wait_behaviors = [
+            bs.int_wait.name,
+            bs.lc_wait.name,
+            bs.ot_wait_stopped,
+            bs.int_app_init,
+            bs.int_app_to_stop,
+        ]
 
         # when no curr_behavior (before unparking lane free) or
         # a wait behavior occurs, reset the stuck timer
