@@ -12,6 +12,7 @@ from typing import Optional
 from typing import List
 from planning.cfg import ACCConfig
 from dynamic_reconfigure.server import Server
+import numpy as np
 
 import shapely
 
