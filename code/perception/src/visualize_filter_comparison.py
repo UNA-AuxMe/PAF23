@@ -3,18 +3,12 @@
 import matplotlib.pyplot as plt
 from math import pi
 import numpy as np
-import os
 
-NEW_FILTER_FILE_NAME = "01"
-OLD_FILTER_FILE_NAME = "01"
-GT_FILE_NAME = "01"
+NEW_FILTER_FILE_NAME = "02"
+OLD_FILTER_FILE_NAME = "02"
+GT_FILE_NAME = "02"
 
-print(
-    os.listdir(
-        "/workspace/code/perception/src/experiments/filter_comparison/"
-        + "new_filter_pos"
-    )
-)
+
 # open the file with the estimated positions of the new filter
 nf_pos_file = open(
     "/workspace/code/perception/src/experiments/filter_comparison/"
@@ -267,24 +261,32 @@ def plot_x_position():
     gt_x_small = []
     index = 0
     for j in range(len(nf_x_positions)):
-        while not (gt_time_stamps[index] == nf_pos_time_stamps[j]):
-            if index < len(gt_time_stamps) - 1:
-                index = index + 1
-            else:
+
+        for i in range(0, len(gt_time_stamps)):
+            if gt_time_stamps[i] == nf_pos_time_stamps[j]:
+                index = i
                 break
         gt_x_small.append(gt_x_positions[index])
-        if index < len(gt_time_stamps) - 1:
-            index = index + 1
 
     diff = np.abs(np.subtract(gt_x_small, nf_x_positions))
-    print(diff)
-    print("MSE X-Pos: " + str(np.square(diff.mean())))
+    print("MSE NF X-Pos: " + str(np.square(diff.mean())))
+    plt.plot(nf_pos_time_stamps, diff, color="blue", label="Error NF X-Pos")
+
+    gt_x_small = []
+    index = 0
+    for j in range(len(of_x_positions)):
+        for i in range(0, len(gt_time_stamps)):
+            if gt_time_stamps[i] == of_pos_time_stamps[j]:
+                index = i
+                break
+        gt_x_small.append(gt_x_positions[index])
+    diff = np.abs(np.subtract(gt_x_small, of_x_positions))
+    print("MSE OF X-Pos: " + str(np.square(diff.mean())))
+    plt.plot(of_pos_time_stamps, diff, color="orange", label="Error OF X-Pos")
 
     limit = []
     for i in range(0, len(nf_pos_time_stamps)):
         limit.append(0.5)
-
-    plt.plot(nf_pos_time_stamps, diff, label="Error X-Pos")
     plt.plot(
         nf_pos_time_stamps,
         limit,
@@ -308,13 +310,13 @@ def plot_y_position():
     plt.plot(
         nf_pos_time_stamps,
         nf_y_positions,
-        label="nf x positions " + NEW_FILTER_FILE_NAME,
+        label="nf y positions " + NEW_FILTER_FILE_NAME,
         color="blue",
     )
     plt.plot(
         of_pos_time_stamps,
         of_y_positions,
-        label="of x positions " + OLD_FILTER_FILE_NAME,
+        label="of y positions " + OLD_FILTER_FILE_NAME,
         color="orange",
     )
     plt.plot(
@@ -349,23 +351,32 @@ def plot_y_position():
     gt_y_small = []
     index = 0
     for j in range(len(nf_y_positions)):
-        while not (gt_time_stamps[index] == nf_pos_time_stamps[j]):
-            if index < len(gt_time_stamps) - 1:
-                index = index + 1
-            else:
+
+        for i in range(0, len(gt_time_stamps)):
+            if gt_time_stamps[i] == nf_pos_time_stamps[j]:
+                index = i
                 break
         gt_y_small.append(gt_y_positions[index])
-        if index < len(gt_time_stamps) - 1:
-            index = index + 1
 
     diff = np.abs(np.subtract(gt_y_small, nf_y_positions))
-    print("MSE Y-Pos: " + str(np.square(diff.mean())))
+    print("MSE NF Y-Pos: " + str(np.square(diff.mean())))
+    plt.plot(nf_pos_time_stamps, diff, color="blue", label="Error NF Y-Pos")
+
+    gt_y_small = []
+    index = 0
+    for j in range(len(of_y_positions)):
+        for i in range(0, len(gt_time_stamps)):
+            if gt_time_stamps[i] == of_pos_time_stamps[j]:
+                index = i
+                break
+        gt_y_small.append(gt_y_positions[index])
+    diff = np.abs(np.subtract(gt_y_small, of_y_positions))
+    print("MSE OF Y-Pos: " + str(np.square(diff.mean())))
+    plt.plot(of_pos_time_stamps, diff, color="orange", label="Error OF Y-Pos")
 
     limit = []
     for i in range(0, len(nf_pos_time_stamps)):
         limit.append(0.5)
-
-    plt.plot(nf_pos_time_stamps, diff, label="Error Y-Pos", color="green")
     plt.plot(
         nf_pos_time_stamps,
         limit,
