@@ -112,20 +112,20 @@ class OdometryNode(CompatibleNode):
 
         dt = self.loop_rate
         velocity = self.speed
-        steering_angle = self.steering_angle
+        steering_angle = -self.steering_angle
 
         # Calculate the change in orientation omega
         # based on velocity and turning radius
         if self.steering_angle != 0:
-            turning_radius = -WHEELBASE_MKZ_2020 / math.tan(steering_angle)
+            turning_radius = WHEELBASE_MKZ_2020 / math.tan(steering_angle)
             # neg sign because of ros conversion
         else:
             turning_radius = math.inf
         omega = velocity / turning_radius * dt
 
         # Calculate hero based velocities
-        vx = velocity * math.cos(omega)
-        vy = velocity * math.sin(omega)
+        vx = velocity * math.cos(steering_angle)
+        vy = velocity * math.sin(steering_angle)
 
         # Create Odometry message from calculated data.
         odom = Odometry()
