@@ -40,6 +40,7 @@
     <param name="role_name" value="$(arg role_name)" />
     <param name="view_camera" value="$(arg view_camera)" />
     <param name="camera_resolution" value="$(arg camera_resolution)"/>
+    <rosparam file="$(find perception)/config/trafficlight_config.yaml" command="load" />
 
     <!--
         Image-Segmentation:
@@ -57,6 +58,7 @@
     <param name="role_name" value="$(arg role_name)" />
     <param name="side" value="Center" />
     <param name="model" value="/workspace/code/perception/src/traffic_light_detection/models/model_acc_92.48_val_91.88.pt" />
+    <param name="tfs_debug" value="False"/>
   </node>
 
   <node pkg="perception" type="global_plan_distance_publisher.py" name="GlobalPlanDistance" output="screen">

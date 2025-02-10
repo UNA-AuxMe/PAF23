@@ -8,13 +8,15 @@ import ros_compatibility as roscomp
 from rospy.numpy_msg import numpy_msg
 from sensor_msgs.msg import Image as ImageMsg
 from perception.msg import TrafficLightState
-from std_msgs.msg import Int16
 from cv_bridge import CvBridge
 from traffic_light_detection.src.traffic_light_detection.traffic_light_inference import (  # noqa: E501
     TrafficLightInference,
 )
 import cv2
 import numpy as np
+
+import rospy
+from visualization_msgs.msg import Marker
 
 
 class TrafficLightNode(CompatibleNode):
@@ -27,6 +29,7 @@ class TrafficLightNode(CompatibleNode):
         self.classifier = TrafficLightInference(self.get_param("model", ""))
         self.last_info_time: datetime = None
         self.last_state = None
+        self.visual_debug = self.get_param("tfs_debug", False)
         threading.Thread(target=self.auto_invalidate_state).start()
 
         # publish / subscribe setup
@@ -34,6 +37,7 @@ class TrafficLightNode(CompatibleNode):
         self.setup_traffic_light_publishers()
 
     def setup_camera_subscriptions(self):
+        """receives images and runs handel_camera_image"""
         self.new_subscription(
             msg_type=numpy_msg(ImageMsg),
             callback=self.handle_camera_image,
@@ -42,18 +46,22 @@ class TrafficLightNode(CompatibleNode):
         )
 
     def setup_traffic_light_publishers(self):
+        # publishes current state of traffic light
         self.traffic_light_publisher = self.new_publisher(
             msg_type=TrafficLightState,
             topic=f"/paf/{self.role_name}/{self.side}/traffic_light_state",
             qos_profile=1,
         )
-        self.traffic_light_distance_publisher = self.new_publisher(
-            msg_type=Int16,
-            topic=f"/paf/{self.role_name}/{self.side}" + "/traffic_light_y_distance",
-            qos_profile=1,
+        # publishes a debug visualization of the current state
+        self.marker_pub = rospy.Publisher(
+            "/paf/hero/TrafficLight/state/debug_marker", Marker, queue_size=10
         )
 
     def auto_invalidate_state(self):
+        """
+        sets the traffic light state to 0 when no new images where received
+        during the last 2 seconds
+        """
         while True:
             sleep(1)
 
@@ -64,14 +72,15 @@ class TrafficLightNode(CompatibleNode):
                 msg = TrafficLightState()
                 msg.state = 0
                 self.traffic_light_publisher.publish(msg)
-                self.traffic_light_distance_publisher.publish(Int16(0))
+                if self.visual_debug:
+                    traffic_light_visualization(self, msg.state)
                 self.last_info_time = None
 
     def handle_camera_image(self, image):
-        distance = int(image.header.frame_id)
-
+        # calculates the current state of the traffic light
         cv2_image = self.bridge.imgmsg_to_cv2(image)
         rgb_image = cv2.cvtColor(cv2_image, cv2.COLOR_BGR2RGB)
+        # apply a NN on the image to determine state
         result, data = self.classifier(cv2_image)
 
         if (
@@ -81,19 +90,19 @@ class TrafficLightNode(CompatibleNode):
             or data[0][3] > 1e-10
         ):
             return  # too uncertain, may not be a traffic light
-
+        # checks if the traffic light has correct orientation
         if not is_front(rgb_image):
             return  # not a front facing traffic light
 
+        # current state gets published until a new state is received
         state = result if result in [1, 2, 4] else 0
         if self.last_state == state:
             # 1: Green, 2: Red, 4: Yellow, 0: Unknown
             msg = TrafficLightState()
             msg.state = state
+            if self.visual_debug:
+                traffic_light_visualization(self, state)
             self.traffic_light_publisher.publish(msg)
-
-            if distance is not None:
-                self.traffic_light_distance_publisher.publish(Int16(distance))
         else:
             self.last_state = state
 
@@ -103,6 +112,49 @@ class TrafficLightNode(CompatibleNode):
 
     def run(self):
         self.spin()
+
+
+def traffic_light_visualization(self, state):
+    # pulishes a debug visualization of the current state
+    text_marker = Marker()
+    text_marker.header.frame_id = "hero"
+    text_marker.header.stamp = rospy.Time.now()
+    text_marker.ns = "traffic_light"
+    text_marker.id = 1
+    text_marker.type = Marker.TEXT_VIEW_FACING
+    text_marker.action = Marker.ADD
+
+    text_marker.scale.z = 0.5  # Textsize
+    if state == 0:
+        text_marker.text = "TLS: Unknown"
+        text_marker.color.r = 0.0
+        text_marker.color.g = 0.0
+        text_marker.color.b = 0.0
+    if state == 1:
+        text_marker.text = "TLS: Green"
+        text_marker.color.r = 0.0
+        text_marker.color.g = 1.0
+        text_marker.color.b = 0.0
+    if state == 2:
+        text_marker.text = "TLS: Red"
+        text_marker.color.r = 1.0
+        text_marker.color.g = 0.0
+        text_marker.color.b = 0.0
+    if state == 4:
+        text_marker.text = "TLS: Yellow"
+        text_marker.color.r = 1.0
+        text_marker.color.g = 1.0
+        text_marker.color.b = 0.0
+
+    text_marker.color.a = 1.0
+
+    # Position des Textmarkers (oberhalb des Pfeils)
+    text_marker.pose.position.x = 0.0
+    text_marker.pose.position.y = 0.0
+    text_marker.pose.position.z = 2.0  # show over vehicle
+
+    # Publish the marker
+    self.marker_pub.publish(text_marker)
 
 
 def get_light_mask(image):

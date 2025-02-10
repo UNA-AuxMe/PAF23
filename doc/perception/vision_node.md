@@ -14,6 +14,7 @@ light detection is implemented.
 - [4. Collision Check](#4-collision-check)
 - [5. Traffic Light Detection](#5-traffic-light-detection)
 - [6. Intermediate Layer](#6-intermediate-layer)
+- [7. Dynamic Reconfiguration](#7-dynamic-reconfiguration)
 
 ## Model overview
 
@@ -70,3 +71,12 @@ The traffic light detection uses the cropped image of the traffic light.
 ## 6. Intermediate Layer
 
 All detected object clusters are then published to the intermediate layer.
+
+## 7. Dynamic Reconfiguration
+
+It is currently possible to change the following parameters during runtime:
+
+- `min_x`: most left value of traffic light in pixel
+- `max_x`: most right value of traffic light in pixel
+- `max_y`: highest value of traffic light in pixel
+- `min_prob`: minimal confidence needed
