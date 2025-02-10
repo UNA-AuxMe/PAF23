@@ -151,12 +151,12 @@ class PositionHeadingPublisherNode(CompatibleNode):
         )
         # Publishes current_pos depending on the filter used
         self.cur_pos_publisher = self.new_publisher(
-            PoseStamped, f"/paf/{self.role_name}/current_pos", qos_profile=1
+            PoseStamped, f"/paf/{self.role_name}/current_pos2", qos_profile=1
         )
 
         self.__heading: float = 0
         self.__heading_publisher = self.new_publisher(
-            Float32, f"/paf/{self.role_name}/current_heading", qos_profile=1
+            Float32, f"/paf/{self.role_name}/current_heading2", qos_profile=1
         )
 
     # endregion Publisher END

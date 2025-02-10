@@ -71,7 +71,8 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-rviz ros-noetic-rqt ros-noetic-pcl-ros ros-noetic-rosbridge-suite ros-noetic-rosbridge-server \
     ros-noetic-robot-pose-ekf ros-noetic-ros-numpy \
     ros-noetic-py-trees-ros ros-noetic-rqt-py-trees ros-noetic-rqt-reconfigure \
-    ros-noetic-ros-pytest
+    ros-noetic-ros-pytest \
+    ros-noetic-robot-localization
 
 SHELL ["/bin/bash", "-c"]
 
