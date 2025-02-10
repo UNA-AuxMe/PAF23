@@ -1,0 +1,21 @@
+include:
+  - docker-compose.linter.yaml
+  - roscore_service.yaml
+  - docker-compose.carla-simulator.yaml
+
+services:
+  agent:
+    extends:
+      file: agent_service_test.yaml
+      service: agent
+
+    ports:
+      # Reserved ports for the debugger
+      - "53000-53100:53000-53100"
+    command: |-
+      bash -c "\
+      bash -c \"set -e && cd /catkin_ws && catkin_make\" && \
+      sleep 10 && sudo chown -R ${USER_UID}:${USER_GID} ../ && \
+      sudo chmod -R a+w ../ && sudo mkdir -p $${XDG_RUNTIME_DIR} && sudo chmod 0700 $${XDG_RUNTIME_DIR} && sudo chown -R ${USER_UID}:${USER_GID} $${XDG_RUNTIME_DIR} && \
+      (rqt_console &) && disown -a && \
+      python3 /workspace/code/test/run_test.py --debug=0 --routes=$${ROUTE} --agent=/workspace/code/agent/src/agent/agent.py --host=$${CARLA_SIM_HOST} --track=MAP"
