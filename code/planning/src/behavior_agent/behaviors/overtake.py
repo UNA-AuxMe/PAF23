@@ -410,12 +410,16 @@ class Approach(py_trees.behaviour.Behaviour):
                 and not isinstance(entity, Car)
             ):
                 self.ot_bicycle_pub.publish(True)
-                ot_free = tree.is_lane_free(False, 12.0, -6.0)
+                ot_free = tree.is_lane_free(
+                    False, 12.0, -6.0, check_method="lanemarking"
+                )
             else:
                 self.ot_bicycle_pub.publish(False)
-                ot_free = tree.is_lane_free(False, self.clear_distance, 15.0)
+                ot_free = tree.is_lane_free(
+                    False, self.clear_distance, 15.0, check_method="lanemarking"
+                )
             rospy.loginfo(f"Overtake is free: {ot_free}")
-            if ot_free:
+            if ot_free == 1:
                 self.ot_counter += 1
                 # using a counter to account for inconsistencies
                 if self.ot_counter > 3:
@@ -641,12 +645,14 @@ class Wait(py_trees.behaviour.Behaviour):
         ):
             self.ot_bicycle_pub.publish(True)
             self.curr_behavior_pub.publish(bs.ot_wait_bicycle.name)
-            ot_free = tree.is_lane_free(False, 12.0, -6.0)
+            ot_free = tree.is_lane_free(False, 12.0, -6.0, check_method="lanemarking")
         else:
             self.ot_bicycle_pub.publish(False)
             self.curr_behavior_pub.publish(bs.ot_wait_free.name)
-            ot_free = tree.is_lane_free(False, self.clear_distance, 15.0)
-        if ot_free:
+            ot_free = tree.is_lane_free(
+                False, self.clear_distance, 15.0, check_method="lanemarking"
+            )
+        if ot_free == 1:
             self.ot_counter += 1
             if self.ot_counter > 3:
                 rospy.loginfo("Overtake is free!")

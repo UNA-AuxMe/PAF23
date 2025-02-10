@@ -118,7 +118,10 @@ class LeaveParkingSpace(py_trees.behaviour.Behaviour):
                     # otherwise pause unparking
                     tree = map.build_tree(mapping_common.map.lane_free_filter())
                     if map.entities and tree.is_lane_free(
-                        right_lane=False, lane_length=22.5, lane_transform=-5.0
+                        right_lane=False,
+                        lane_length=22.5,
+                        lane_transform=-5.0,
+                        check_method="rectangle",
                     ):
                         rospy.loginfo("Left lane is now free. Starting unparking.")
                         self.started = True
