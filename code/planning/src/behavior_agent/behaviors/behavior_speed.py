@@ -15,20 +15,23 @@ parking = Behavior("parking", convert_to_ms(30.0))
 
 # Approach
 
-int_app_init = Behavior("int_app_init", convert_to_ms(30.0))
+int_app_init = Behavior("int_app_init", convert_to_ms(25.0))
 
 # No Traffic Light or Sign -> stop dynamically at Stopline
 int_app_to_stop = Behavior("int_app_to_stop", -2)
 
-int_app_green = Behavior("int_app_green", convert_to_ms(30.0))
+int_app_green = Behavior("int_app_green", convert_to_ms(25.0))
+
+int_app_red = Behavior("int_app_red", convert_to_ms(17.0))
 
 # Wait
 
 int_wait = Behavior("int_wait", 0)
+int_wait_to_stop = Behavior("int_wait_to_stop", convert_to_ms(10.0))
 
 # Enter
 
-int_enter = Behavior("int_enter", convert_to_ms(50.0))
+int_enter = Behavior("int_enter", convert_to_ms(60.0))
 
 # Exit
 
