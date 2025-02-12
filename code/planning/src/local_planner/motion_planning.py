@@ -442,53 +442,39 @@ class MotionPlanning(CompatibleNode):
         mu = 1  # TUNING PARAMETER
         g = 9.81
 
-        # Steering angle based radius calculation
-        if self.steer is not None and False:
-            try:
-                corner_radius = abs(wheelbase / math.tan(self.steer))
-            except ZeroDivisionError:  # if steer is 0
-                return self.__get_speed_cruise()
-
-            dynamics_based_speed = np.sqrt(mu * g * corner_radius)
-            self.loginfo(f"Dynamics based cornering speed: {dynamics_based_speed}")
-            self.dynamics_based_speed = dynamics_based_speed
-        corner = self.__corners[0]
-        pos = self.current_pos[:2]
-
         def distance_to_hero(x, y, hero_pos):
             return np.linalg.norm(np.array([x, y]) - np.array(hero_pos))
 
-        if self.trajectory is not None and False:
+        if self.trajectory is not None:
+            current_wp_idx = self.current_wp
+            selected_points = self.trajectory.poses[
+                current_wp_idx + 1 : current_wp_idx + 3
+            ]
             coords = [
-                [poseStamped.pose.position.x, poseStamped.pose.position.y]
-                for poseStamped in self.trajectory.poses
-                if not distance_to_hero(
-                    poseStamped.pose.position.x, poseStamped.pose.position.y, pos
-                )
-                > 30
-            ]  # filter out points further away than 30 m
-            coords = np.array(coords)
-            tck, u = splprep([coords[:, 0], coords[:, 1]], s=0.01)
+                (poseStamped.pose.position.x, poseStamped.pose.position.y)
+                for poseStamped in selected_points
+            ]
 
-            u_fine = np.linspace(0, 1, 10)
+            x1, y1 = coords[0]
+            x2, y2 = coords[1]
+            x3, y3 = coords[2]
 
-            # calculate derivatives
-            dx, dy = splev(u_fine, tck, der=1)
-            ddx, ddy = splev(u_fine, tck, der=2)
+            # calculate the distance between the points
+            a = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            b = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
+            c = math.sqrt((x1 - x3) ** 2 + (y1 - y3) ** 2)
 
-            # calculate curvature
-            curvature = abs((dx * ddy - dy * ddx) / (dx**2 + dy**2) ** 1.5)
+            # calculate the area of the triangle formed by the points
+            area = abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2
 
-            if max(curvature < 0.001):
+            if area == 0:
+                # if the area is 0, the points are collinear (straight line)
                 return self.__get_speed_cruise()
 
-            dynamics_based_speed = max(np.sqrt(mu * g * 1 / max(curvature)), 2)
-            self.loginfo(
-                f"CURVATURE: {max(curvature):.5f} -> speed: {dynamics_based_speed:.2f}"
-            )
-            self.dynamics_based_speed = min(
-                dynamics_based_speed, self.dynamics_based_speed
-            )
+            radius = (a * b * c) / (4 * area)
+            self.dynamics_based_speed = np.sqrt(mu * g * radius)
+            self.loginfo(f"Cornering Speed: {self.dynamics_based_speed}")
+            return self.dynamics_based_speed
 
         def euclid_dist(vector1, vector2):
             return np.linalg.norm(np.array(vector1) - np.array(vector2))
