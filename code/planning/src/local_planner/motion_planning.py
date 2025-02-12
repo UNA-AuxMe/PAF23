@@ -431,84 +431,77 @@ class MotionPlanning(CompatibleNode):
 
         return filtered_list
 
+    def __calculate_corner_radius(
+        self,
+        pt1: tuple[float, float],
+        pt2: tuple[float, float],
+        pt3: tuple[float, float],
+    ) -> float:
+        """Calculate the radius of a corner based on three points
+
+        Args:
+            pt1 (tuple[float,float]): First point
+            pt2 (tuple[float,float]): Second point
+            pt3 (tuple[float,float]): Third point
+
+        Returns:
+            float: Radius of the corner
+        """
+        x1, y1 = pt1
+        x2, y2 = pt2
+        x3, y3 = pt3
+
+        # calculate the distance between the points
+        a = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        b = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
+        c = math.sqrt((x1 - x3) ** 2 + (y1 - y3) ** 2)
+
+        # calculate the area of the triangle formed by the points
+        area = abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2
+
+        if area == 0:
+            # if the area is 0, the points are collinear (straight line)
+            return np.inf
+
+        radius = (a * b * c) / (4 * area)
+        return radius
+
     def get_cornering_speed(self) -> float:
-        """calculates the cornering speed
+        """calculates the cornering speed based on the centripetal force
 
         Returns:
             float: the cornering speed in m/s
         """
-        # assume wheelbase is 5 meters
-        wheelbase = 5
-        mu = 1  # TUNING PARAMETER
+        mu = 0.7  # TUNING PARAMETER
         g = 9.81
+        look_ahead = 10  # meters (to ensure early braking)
+        radius = np.inf
 
-        def distance_to_hero(x, y, hero_pos):
-            return np.linalg.norm(np.array([x, y]) - np.array(hero_pos))
+        if self.trajectory is not None and self.current_wp is not None:
+            current_wp_idx = int(self.current_wp)
+            self.loginfo(f"Current WP: {current_wp_idx}")
+            self.loginfo(f"type of current_wp_idx: {type(current_wp_idx)}")
 
-        if self.trajectory is not None:
-            current_wp_idx = self.current_wp
-            selected_points = self.trajectory.poses[
-                current_wp_idx + 1 : current_wp_idx + 3
-            ]
-            coords = [
-                (poseStamped.pose.position.x, poseStamped.pose.position.y)
-                for poseStamped in selected_points
-            ]
+            for i in range(look_ahead):
 
-            x1, y1 = coords[0]
-            x2, y2 = coords[1]
-            x3, y3 = coords[2]
+                selected_points = self.trajectory.poses[
+                    current_wp_idx + i + 1 : current_wp_idx + i + 4
+                ]
+                coords = [
+                    (poseStamped.pose.position.x, poseStamped.pose.position.y)
+                    for poseStamped in selected_points
+                ]
 
-            # calculate the distance between the points
-            a = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-            b = math.sqrt((x3 - x2) ** 2 + (y3 - y2) ** 2)
-            c = math.sqrt((x1 - x3) ** 2 + (y1 - y3) ** 2)
+                radius = min(
+                    radius,
+                    self.__calculate_corner_radius(coords[0], coords[1], coords[2]),
+                )
 
-            # calculate the area of the triangle formed by the points
-            area = abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2
-
-            if area == 0:
-                # if the area is 0, the points are collinear (straight line)
+            if radius == np.inf:
                 return self.__get_speed_cruise()
 
-            radius = (a * b * c) / (4 * area)
             self.dynamics_based_speed = np.sqrt(mu * g * radius)
-            self.loginfo(f"Cornering Speed: {self.dynamics_based_speed}")
             return self.dynamics_based_speed
-
-        def euclid_dist(vector1, vector2):
-            return np.linalg.norm(np.array(vector1) - np.array(vector2))
-
-        def map_corner(dist):
-            if dist < 8:  # lane_change
-                return 8
-            elif dist < 25:
-                return 4
-            elif dist < 50:
-                return 7
-            else:
-                return 8
-
-        distance_corner = 0
-        for i in range(len(corner) - 1):
-            distance_corner += euclid_dist(corner[i], corner[i + 1])
-        # self.loginfo(distance_corner)
-
-        if self.__in_corner:
-            distance_end = euclid_dist(pos, corner[0])
-            if distance_end > distance_corner + 2:
-                self.__in_corner = False
-                self.__corners.pop(0)
-                self.loginfo("End Corner")
-                return self.__get_speed_cruise()
-            else:
-                return min(self.dynamics_based_speed, map_corner(distance_corner))
-
-        distance_start = euclid_dist(pos, corner[0])
-        if distance_start < 3:
-            self.__in_corner = True
-            self.loginfo("Start Corner")
-            return min(self.dynamics_based_speed, map_corner(distance_corner))
         else:
             return self.__get_speed_cruise()
 
@@ -529,6 +522,7 @@ class MotionPlanning(CompatibleNode):
         Updates the target velocity based on the current behavior and ACC velocity and
         overtake status and publishes it. The unit of the velocity is m/s.
         """
+        self.loginfo("updating target speed")
         be_speed = self.get_speed_by_behavior(behavior)
         if behavior == bs.parking.name or self.__overtake_status == 1:
             self.target_speed = be_speed
