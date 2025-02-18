@@ -19,6 +19,7 @@ from local_planner.utils import (
     NUM_WAYPOINTS,
     NUM_WAYPOINTS_BICYCLE,
     TARGET_DISTANCE_TO_STOP,
+    TARGET_DISTANCE_TO_STOP_INTERSECTION,
     TARGET_DISTANCE_TO_STOP_OVERTAKE,
     convert_to_ms,
     spawn_car,
@@ -446,7 +447,7 @@ class MotionPlanning(CompatibleNode):
             if dist < 8:  # lane_change
                 return 8
             elif dist < 25:
-                return 4
+                return 5
             elif dist < 50:
                 return 7
             else:
@@ -455,7 +456,6 @@ class MotionPlanning(CompatibleNode):
         distance_corner = 0
         for i in range(len(corner) - 1):
             distance_corner += euclid_dist(corner[i], corner[i + 1])
-        # self.loginfo(distance_corner)
 
         if self.__in_corner:
             distance_end = euclid_dist(pos, corner[0])
@@ -482,9 +482,7 @@ class MotionPlanning(CompatibleNode):
         Args:
             data (Bool): True if emergency stop detected by collision check
         """
-        # self.loginfo("Emergency stop detected")
         if not self.__curr_behavior == bs.parking.name:
-            # self.loginfo("Emergency stop detected and executed")
             self.emergency_pub.publish(data)
 
     def update_target_speed(self, acc_speed, behavior):
@@ -634,6 +632,8 @@ class MotionPlanning(CompatibleNode):
             speed == bs.int_wait.speed
         elif behavior == bs.int_enter.name:
             speed = bs.int_enter.speed
+        elif behavior == bs.int_wait_to_stop.name:
+            speed = bs.int_wait_to_stop.speed
         elif behavior == bs.int_exit:
             speed = self.__get_speed_cruise()
 
@@ -678,14 +678,20 @@ class MotionPlanning(CompatibleNode):
         return self.__acc_speed
 
     def __calc_speed_to_stop_intersection(self) -> float:
-        target_distance = TARGET_DISTANCE_TO_STOP
+        target_distance = TARGET_DISTANCE_TO_STOP_INTERSECTION
         stopline = self.__calc_virtual_stopline()
 
         # calculate speed needed for stopping
-        v_stop = max(convert_to_ms(10.0), convert_to_ms(stopline / 0.8))
+        v_stop = max(convert_to_ms(10.0), convert_to_ms(stopline / 1.7))
         if v_stop > bs.int_app_init.speed:
             v_stop = bs.int_app_init.speed
         if stopline < target_distance:
+            v_stop = convert_to_ms(7.5)
+        if stopline < 4.5:
+            v_stop = convert_to_ms(5.0)
+        if stopline < 3.5:
+            v_stop = convert_to_ms(3.0)
+        if stopline < 2.5:
             v_stop = 0.0
         return v_stop
 
@@ -714,14 +720,9 @@ class MotionPlanning(CompatibleNode):
             return 0.0
 
     def __calc_virtual_stopline(self) -> float:
-        if self.__stopline[0] != np.inf and self.__stopline[1]:
+        if self.__stopline[0] != np.inf:  # and self.__stopline[1]:
             stopline = self.__stopline[0]
-            if self.traffic_light_y_distance < 250 and stopline > 10:
-                return 10
-            elif self.traffic_light_y_distance < 180 and stopline > 7:
-                return 0.0
-            else:
-                return stopline
+            return stopline
         else:
             return 0.0
 

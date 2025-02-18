@@ -1,15 +1,23 @@
 import py_trees
 import numpy as np
 from std_msgs.msg import String
+from typing import Optional
 
 import rospy
+from mapping_common.map import Map
+from mapping_common.entity import FlagFilter
+from mapping_common.transform import Transform2D, Point2
+from mapping_common.markers import debug_marker
 
 from . import behavior_speed as bs
+from .debug_markers import add_debug_marker, add_debug_entry, debug_status
+from .topics2blackboard import BLACKBOARD_MAP_ID
 
 from local_planner.utils import (
-    TARGET_DISTANCE_TO_STOP,
-    convert_to_ms,
+    TARGET_DISTANCE_TO_STOP_INTERSECTION,
 )
+
+INTERSECTION_MARKER_COLOR = (222 / 255, 23 / 255, 214 / 255, 1.0)
 
 """
 Source: https://github.com/ll7/psaf2
@@ -90,14 +98,18 @@ class Ahead(py_trees.behaviour.Behaviour):
 
         bb = self.blackboard.get("/paf/hero/waypoint_distance")
         if bb is None:
-            return py_trees.common.Status.FAILURE
+            return debug_status(
+                self.name, py_trees.common.Status.FAILURE, "No waypoint_distance"
+            )
         else:
             dist = bb.distance
             isIntersection = bb.isStopLine
-        if dist < 30 and isIntersection:
-            return py_trees.common.Status.SUCCESS
+            add_debug_entry(self.name, f"Dist: {dist}")
+            add_debug_entry(self.name, f"Is intersection: {isIntersection}")
+        if dist < 40 and isIntersection:
+            return debug_status(self.name, py_trees.common.Status.SUCCESS)
         else:
-            return py_trees.common.Status.FAILURE
+            return debug_status(self.name, py_trees.common.Status.FAILURE)
 
     def terminate(self, new_status):
         """
@@ -118,7 +130,7 @@ class Ahead(py_trees.behaviour.Behaviour):
 class Approach(py_trees.behaviour.Behaviour):
     """
     This behaviour is executed when the ego vehicle is in close proximity of
-    an intersection and behaviours.road_features.intersection_ahead is
+    an intersection and intersection_ahead is
     triggered. It than handles the approaching the intersection, slowing the
     vehicle down appropriately.
     """
@@ -170,6 +182,8 @@ class Approach(py_trees.behaviour.Behaviour):
 
         self.virtual_stopline_distance = np.inf
 
+        self.stopping = True
+
         self.curr_behavior_pub.publish(bs.int_app_init.name)
 
     def update(self):
@@ -201,17 +215,28 @@ class Approach(py_trees.behaviour.Behaviour):
             if light_distance_y_msg is not None:
                 self.traffic_light_distance = light_distance_y_msg.data
 
+        add_debug_entry(self.name, f"Traffic light: {self.traffic_light_status}")
+        add_debug_entry(
+            self.name, f"Traffic light detected: {self.traffic_light_detected}"
+        )
+
         # Update stopline Info
         _dis = self.blackboard.get("/paf/hero/waypoint_distance")
         if _dis is not None:
             self.stopline_distance = _dis.distance
             self.stopline_detected = _dis.isStopLine
 
+        add_debug_entry(self.name, f"Stopline dist: {self.stopline_distance}")
+        add_debug_entry(self.name, f"Stopline detected: {self.stopline_detected}")
+
         # Update stop sign Info
         stop_sign_msg = self.blackboard.get("/paf/hero/stop_sign")
         if stop_sign_msg is not None:
             self.stop_sign_detected = stop_sign_msg.isStop
             self.stop_distance = stop_sign_msg.distance
+
+        add_debug_entry(self.name, f"Stopsign dist: {self.stop_distance}")
+        add_debug_entry(self.name, f"Stopsign detected: {self.stop_sign_detected}")
 
         # calculate virtual stopline
         if self.stopline_distance != np.inf and self.stopline_detected:
@@ -220,72 +245,78 @@ class Approach(py_trees.behaviour.Behaviour):
             self.virtual_stopline_distance = self.stop_distance
         else:
             self.virtual_stopline_distance = 0.0
-
-        target_distance = TARGET_DISTANCE_TO_STOP
+        target_distance = TARGET_DISTANCE_TO_STOP_INTERSECTION
+        add_debug_entry(
+            self.name, f"Virtual stopline dist: {self.virtual_stopline_distance}"
+        )
         # stop when there is no or red/yellow traffic light or a stop sign is
         # detected
         if (
-            self.traffic_light_status == ""
-            or self.traffic_light_status == "red"
+            self.traffic_light_status == "red"
             or self.traffic_light_status == "yellow"
             or (self.stop_sign_detected and not self.traffic_light_detected)
+            or self.traffic_light_status == ""
         ):
-
-            rospy.loginfo(
-                f"Intersection Approach: slowing down! Stop sign: "
-                f"{self.stop_sign_detected}, Light: {self.traffic_light_status}"
-            )
-            self.curr_behavior_pub.publish(bs.int_app_to_stop.name)
+            self.stopping = True
+            # still far
+            if self.virtual_stopline_distance > 17.0:
+                self.curr_behavior_pub.publish(bs.int_app_init.name)
+            else:
+                self.curr_behavior_pub.publish(bs.int_app_to_stop.name)
 
         # approach slowly when traffic light is green as traffic lights are
         # higher priority than traffic signs this behavior is desired
         if self.traffic_light_status == "green":
+            self.stopping = False
             self.curr_behavior_pub.publish(bs.int_app_green.name)
+
+        add_debug_entry(self.name, f"Stopping: {self.stopping}")
 
         # get speed
         speedometer = self.blackboard.get("/carla/hero/Speed")
         if speedometer is not None:
             speed = speedometer.speed
         else:
-            rospy.logwarn("no speedometer connected")
-            return py_trees.common.Status.RUNNING
-        if (self.virtual_stopline_distance > target_distance) and (
-            self.traffic_light_distance > 150
-        ):
-            # too far
-            rospy.loginfo("Intersection still approaching")
-            return py_trees.common.Status.RUNNING
-        elif speed < convert_to_ms(2.0) and (
-            (self.virtual_stopline_distance < target_distance)
-            or (self.traffic_light_distance < 150)
-        ):
-            # stopped
-            rospy.loginfo("Intersection Approach: stopped")
-            return py_trees.common.Status.SUCCESS
-        elif (
-            speed > convert_to_ms(5.0)
-            and self.virtual_stopline_distance < 6.0
-            and self.traffic_light_status == "green"
-        ):
-
-            # drive through intersection even if traffic light turns yellow
-            rospy.loginfo(
-                f"Intersection Approach Light is green, light:"
-                f"{self.traffic_light_status}"
+            return debug_status(
+                self.name, py_trees.common.Status.RUNNING, "No speedometer connected"
             )
-            return py_trees.common.Status.SUCCESS
-        elif speed > convert_to_ms(5.0) and self.virtual_stopline_distance < 3.5:
-            # running over line
-            return py_trees.common.Status.SUCCESS
+        if self.virtual_stopline_distance >= target_distance:
+            return debug_status(
+                self.name,
+                py_trees.common.Status.RUNNING,
+                "Intersection still approaching",
+            )
+        elif ((self.virtual_stopline_distance < 2.5)) and (self.stopping):
+            # stopped
+            self.curr_behavior_pub.publish(bs.int_wait.name)
+            if speed < 0.5:
+                return debug_status(
+                    self.name, py_trees.common.Status.SUCCESS, "Stopped"
+                )
+            else:
+                return debug_status(
+                    self.name, py_trees.common.Status.RUNNING, "Stopping..."
+                )
+        elif (
+            self.virtual_stopline_distance < target_distance * 1.5
+        ) and not self.stopping:
+            self.curr_behavior_pub.publish(bs.int_wait_to_stop.name)
+            # drive through intersection even if traffic light turns yellow
+            return debug_status(
+                self.name, py_trees.common.Status.SUCCESS, "Driving through"
+            )
 
         if (
             self.virtual_stopline_distance < target_distance
             and not self.stopline_detected
         ):
-            rospy.loginfo("Intersection Approach: Leave intersection!")
-            return py_trees.common.Status.SUCCESS
+            return debug_status(
+                self.name,
+                py_trees.common.Status.SUCCESS,
+                "Over stopline, driving through",
+            )
         else:
-            return py_trees.common.Status.RUNNING
+            return debug_status(self.name, py_trees.common.Status.RUNNING)
 
     def terminate(self, new_status):
         """
@@ -348,8 +379,38 @@ class Wait(py_trees.behaviour.Behaviour):
         :return: True
         """
         rospy.loginfo("Wait Intersection")
+
         self.red_light_flag = False
         self.green_light_time = rospy.get_rostime()
+        self.over_stop_line = False
+        hero_pos = self.blackboard.get("/paf/hero/current_pos")
+        hero_heading = self.blackboard.get("/paf/hero/current_heading")
+        self.start_pos = (hero_pos.pose.position.x, hero_pos.pose.position.y)
+        hero_heading = hero_heading.data
+        trajectory = self.blackboard.get("/paf/hero/trajectory")
+        current_wp = self.blackboard.get("/paf/hero/current_wp")
+        current_wp = current_wp.data
+        trajectory_point = trajectory.poses[int(current_wp) + 10].pose.position
+        self.oncoming_distance = 45.0
+
+        x_direction = trajectory_point.x - hero_pos.pose.position.x
+        y_direction = trajectory_point.y - hero_pos.pose.position.y
+
+        self.oncoming_counter = 0
+        self.red_counter = 0
+
+        rotation_matrix = Transform2D.new_rotation(-hero_heading)
+        intersection_point = rotation_matrix * Point2.new(x_direction, y_direction)
+
+        # intersection type to determine a left turn, right turn or driving straight
+        # 0 = straight, 1 = left, 2 = right
+
+        if intersection_point.y() > 1.0:
+            self.intersection_type = 1
+        elif intersection_point.y() < -1.0:
+            self.intersection_type = 2
+        else:
+            self.intersection_type = 0
         return True
 
     def update(self):
@@ -360,68 +421,110 @@ class Wait(py_trees.behaviour.Behaviour):
            - Triggering, checking, monitoring. Anything...but do not block!
            - Set a feedback message
            - return a py_trees.common.Status.[RUNNING, SUCCESS, FAILURE]
-        Waits in front of the intersection until there is a green light, the
-        intersection is clear or no traffic light at all.
+        Waits in front of the intersection until there is a green light.
+        In case of turning left, oncoming traffic is checked bevor proceeding.
         :return: py_trees.common.Status.RUNNING, while traffic light is yellow
                  or red
                  py_trees.common.Status.SUCCESS, if the traffic light switched
                  to green or no traffic light is detected
         """
+        map: Optional[Map] = self.blackboard.get(BLACKBOARD_MAP_ID)
+        if map is None:
+            return debug_status(
+                self.name, py_trees.common.Status.FAILURE, "Map is None"
+            )
+        tree = map.build_tree(FlagFilter(is_collider=True, is_hero=False))
+
+        hero = map.hero()
+        if hero is None:
+            return debug_status(
+                self.name, py_trees.common.Status.FAILURE, "No hero in map"
+            )
+
         light_status_msg = self.blackboard.get("/paf/hero/Center/traffic_light_state")
 
-        # TODO: ADD FEATURE Check if intersection is clear
-        lidar_data = None
-        intersection_clear = True
-        if lidar_data is not None:
-            # if distance smaller than 10m, intersection is blocked
-            if lidar_data.data < 10.0:
-                intersection_clear = False
-            else:
-                intersection_clear = True
-
         if light_status_msg is not None:
+            traffic_light_status = get_color(light_status_msg.state)
+        else:
+            traffic_light_status = "No traffic light message"
+
+        add_debug_entry(self.name, f"Traffic light status: {traffic_light_status}")
+
+        if light_status_msg is not None and self.over_stop_line is False:
             traffic_light_status = get_color(light_status_msg.state)
             if traffic_light_status == "red" or traffic_light_status == "yellow":
                 # Wait at traffic light
                 self.red_light_flag = True
+                self.red_counter = 0
                 self.green_light_time = rospy.get_rostime()
-                rospy.loginfo(f"Intersection Wait Light Status: {traffic_light_status}")
                 self.curr_behavior_pub.publish(bs.int_wait.name)
-                return py_trees.common.Status.RUNNING
-            elif (
-                rospy.get_rostime() - self.green_light_time < rospy.Duration(1)
-                and traffic_light_status == "green"
-            ):
-                # Wait approx 1s for confirmation
-                rospy.loginfo("Intersection Wait Confirm green light!")
-                return py_trees.common.Status.RUNNING
-            elif self.red_light_flag and traffic_light_status != "green":
-                rospy.loginfo(f"Light Status: {traffic_light_status}" "-> prev was red")
-                # Probably some interference
-                return py_trees.common.Status.RUNNING
-            elif (
-                rospy.get_rostime() - self.green_light_time > rospy.Duration(1)
-                and traffic_light_status == "green"
-            ):
-                rospy.loginfo(
-                    f"Driving through Intersection Light Status: {traffic_light_status}"
+                return debug_status(
+                    self.name,
+                    py_trees.common.Status.RUNNING,
+                    "Waiting for traffic light",
                 )
+            elif (
+                rospy.get_rostime() - self.green_light_time < rospy.Duration(0.5)
+                and traffic_light_status == "green"
+            ):
+                # Wait approx 0.5s for confirmation
+                return debug_status(
+                    self.name,
+                    py_trees.common.Status.RUNNING,
+                    "Wait Confirm green light!",
+                )
+            elif (
+                rospy.get_rostime() - self.green_light_time > rospy.Duration(0.5)
+                and traffic_light_status == "green"
+            ):
                 # Drive through intersection
-                return py_trees.common.Status.SUCCESS
-            else:
-                rospy.loginfo(
-                    f"Light Status: {traffic_light_status}"
-                    "-> No Traffic Light detected"
+                self.over_stop_line = True
+                if self.intersection_type != 1:
+                    self.curr_behavior_pub.publish(bs.int_app_green.name)
+                else:
+                    # drive a bit over the stopline
+                    self.curr_behavior_pub.publish(bs.int_wait_to_stop.name)
+                return debug_status(
+                    self.name, py_trees.common.Status.RUNNING, "Driving through..."
                 )
+            else:
+                self.over_stop_line = True
+                self.curr_behavior_pub.publish(bs.int_wait_to_stop.name)
+                return debug_status(
+                    self.name,
+                    py_trees.common.Status.RUNNING,
+                    "No traffic light detected",
+                )
+        if self.intersection_type != 1:
+            self.curr_behavior_pub.publish(bs.int_enter.name)
+            return debug_status(
+                self.name, py_trees.common.Status.SUCCESS, "No left turn -> continue"
+            )
 
-        # Check clear if no traffic light is detected
-        if not intersection_clear:
-            rospy.loginfo("Intersection blocked")
-            self.curr_behavior_pub.publish(bs.int_wait.name)
-            return py_trees.common.Status.RUNNING
+        self.curr_behavior_pub.publish(bs.int_wait.name)
+        intersection_clear, intersection_masks = tree.is_lane_free_intersection(
+            hero, self.oncoming_distance, 35.0, 0.0
+        )
+        for mask in intersection_masks:
+            add_debug_marker(debug_marker(mask, color=INTERSECTION_MARKER_COLOR))
+        if intersection_clear:
+            self.oncoming_counter += 1
+            if self.oncoming_counter > 2:
+                self.curr_behavior_pub.publish(bs.int_enter.name)
+                return debug_status(
+                    self.name, py_trees.common.Status.SUCCESS, "Intersection clear"
+                )
+            else:
+                return debug_status(
+                    self.name,
+                    py_trees.common.Status.RUNNING,
+                    f"Intersection clear\n\tCounter wait: {self.oncoming_counter}",
+                )
         else:
-            rospy.loginfo("Intersection clear")
-            return py_trees.common.Status.SUCCESS
+            self.oncoming_counter = 0
+            return debug_status(
+                self.name, py_trees.common.Status.RUNNING, "Intersection blocked"
+            )
 
     def terminate(self, new_status):
         """
@@ -506,13 +609,19 @@ class Enter(py_trees.behaviour.Behaviour):
         next_waypoint_msg = self.blackboard.get("/paf/hero/waypoint_distance")
 
         if next_waypoint_msg is None:
-            return py_trees.common.Status.FAILURE
-        if next_waypoint_msg.distance < 5:
-            rospy.loginfo("Drive through intersection!")
+            return debug_status(
+                self.name, py_trees.common.Status.FAILURE, "No next waypoint"
+            )
+        add_debug_entry(self.name, f"Next waypoint dist: {next_waypoint_msg.distance}")
+        if next_waypoint_msg.distance > 8 and next_waypoint_msg.distance < 35:
             self.curr_behavior_pub.publish(bs.int_enter.name)
-            return py_trees.common.Status.RUNNING
+            return debug_status(
+                self.name, py_trees.common.Status.RUNNING, "Driving through..."
+            )
         else:
-            return py_trees.common.Status.SUCCESS
+            return debug_status(
+                self.name, py_trees.common.Status.SUCCESS, "Done driving through"
+            )
 
     def terminate(self, new_status):
         """
@@ -586,7 +695,9 @@ class Leave(py_trees.behaviour.Behaviour):
         Abort this subtree
         :return: py_trees.common.Status.FAILURE, to exit this subtree
         """
-        return py_trees.common.Status.FAILURE
+        return debug_status(
+            self.name, py_trees.common.Status.FAILURE, "Left intersection"
+        )
 
     def terminate(self, new_status):
         """

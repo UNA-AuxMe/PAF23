@@ -729,6 +729,85 @@ class MapTree:
         else:
             return LaneFreeState.BLOCKED, lane_box
 
+    def is_lane_free_intersection(
+        self,
+        hero: Entity,
+        lane_length: float = 20.0,
+        lane_transform_x: float = 0.0,
+        lane_transform_y: float = 0.0,
+    ) -> Tuple[bool, List[shapely.Polygon]]:
+        """Returns True if the opposing lane of our car is free.
+        Checks if a Polygon lane box intersects with any
+        relevant entities.
+
+        This is only meant to be used in intersections. Ignores entities
+        that are not moving towards the hero. Adds a tilted rectangle to the
+        collision mask to account for the hero car not standing straight.
+
+        Parameters:
+        - lane_length (float): Sets the lane length that should be checked, in meters.
+          Default value is 20 meters.
+        - lane_transform_x (float): Transforms the checked lane box to the front (>0) or
+          back (<0) of the car, in meters. Default is 0 meter so the lane box originates
+           from the car position -> same distance to the front and rear get checked
+        - lane_transform_y (float): Transforms the checked lane box to the left(>0) or
+          right(<0)
+        Returns:
+            (bool, [shapely.Polygon]): lane is free / not free,
+                collision masks used for the check
+        """
+
+        # lane length cannot be negative, as no rectangle with negative dimension exists
+        if lane_length < 0:
+            raise ValueError("Lane length cannot take a negative value.")
+
+        lane_box_shape = Rectangle(
+            length=lane_length,
+            width=11.0,
+            offset=Transform2D.new_translation(
+                Vector2.new(lane_transform_x, lane_transform_y)
+            ),
+        )
+        lane_box_shape_tilted = Rectangle(
+            length=(lane_length / 2.0) + 1.5,
+            width=12.0,
+            offset=Transform2D.new_rotation_translation(
+                -0.45,
+                Vector2.new(
+                    lane_transform_x + lane_length / 3.0,
+                    (lane_transform_y - 4.0),
+                ),
+            ),
+        )
+
+        # converts lane boxes to a shapely Polygon
+        lane_box_shapely = lane_box_shape.to_shapely(Transform2D.identity())
+        lane_box_shape_tilted_shapely = lane_box_shape_tilted.to_shapely(
+            Transform2D.identity()
+        )
+        masks = [lane_box_shapely, lane_box_shape_tilted_shapely]
+        lane_mask = shapely.union_all(masks)
+        # creates intersection list of lane mask with map entities
+        lane_box_intersection_entities = self.query(geo=lane_mask)
+        if not lane_box_intersection_entities:
+            return (True, masks)
+
+        enities_with_motion = [
+            entity
+            for entity in lane_box_intersection_entities
+            if entity.entity.motion is not None
+        ]
+        if not enities_with_motion:
+            return (True, masks)
+        # if all entities drive forward or don't move the lane can be considered free
+        return (
+            all(
+                hero.get_delta_forward_velocity_of(entity.entity) > -0.5
+                for entity in enities_with_motion
+            ),
+            masks,
+        )
+
     def get_nearest_entity(
         self,
         mask: shapely.Geometry,
