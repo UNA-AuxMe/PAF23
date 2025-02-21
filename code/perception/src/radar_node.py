@@ -40,8 +40,8 @@ class RadarNode(CompatibleNode):
         }
         # Sensor-Konfiguration: [X, Y, Z] # , Roll, Pitch, Jaw]
         self.sensor_config = {
-            "RADAR0": [2.0, -1.5, 1],  # , 0.0, 0.0, 0.0],
-            "RADAR1": [2.0, 1.5, 1],  # , 0.0, 0.0, 0.0],
+            "RADAR0": [2.0, -1.5, 0.5],  # , 0.0, 0.0, 0.0],
+            "RADAR1": [2.0, 1.5, 0.5],  # , 0.0, 0.0, 0.0],
         }
 
         self.timer_interval = 0.1  # 0.1 seconds
@@ -236,7 +236,7 @@ class RadarNode(CompatibleNode):
 
         # Filter Mask: Check whether the point is below the calculated floor height
         # plus a safety offset of 30cm
-        mask = points[:, 2] > points[:, 0] * pitch_slope - 0.3
+        mask = points[:, 2] > points[:, 0] * pitch_slope - 0.15
 
         filtered_points = points[mask]
         filtered_out_points = points[~mask]
